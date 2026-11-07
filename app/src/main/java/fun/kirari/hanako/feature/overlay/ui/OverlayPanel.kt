@@ -58,7 +58,6 @@ internal fun OverlayPanel(
             CompactOverlaySettings(uiState.settings,
                 busy = uiState.working || uiState.capturing,
                 onSelect = { item ->
-                    if (item == BubbleMenuItem.Settings) viewModel.closeSheet()
                     viewModel.handleMenuSelect(item)
                 },
                 onContentHeightChanged = onContentHeightChanged)

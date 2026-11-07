@@ -44,6 +44,7 @@ internal class OpenAiChatAdapter(
         }
 
         val toolCalls = mutableMapOf<Int, PendingToolCall>()
+        val reasoningContent = StringBuilder()
         var textDeltaCount = 0
 
         sseClient.stream(
@@ -58,6 +59,7 @@ internal class OpenAiChatAdapter(
                     val choice = (root["choices"] as? JsonArray)?.firstOrNull()?.jsonObject
                         ?: return@stream null
                     val delta = choice["delta"]?.jsonObject ?: return@stream null
+                    reasoningContent.append(delta["reasoning_content"]?.jsonPrimitive?.contentOrNull.orEmpty())
 
                     val textDelta = extractOpenAiContent(delta["content"])
                     if (textDelta.isNotEmpty()) {
@@ -94,7 +96,11 @@ internal class OpenAiChatAdapter(
             val name = tc.name ?: continue
             val args = runCatching { json.parseToJsonElement(tc.arguments.toString()).jsonObject }.getOrNull()
                 ?: continue
-            trySend(LlmEvent.ToolCall(tc.id, name, args))
+            val context = if (reasoningContent.isNotEmpty()) listOf(buildJsonObject {
+                put("type", "openai_reasoning")
+                put("reasoning_content", reasoningContent.toString())
+            }) else emptyList()
+            trySend(LlmEvent.ToolCall(tc.id, name, args, providerContext = context))
         }
         trySend(LlmEvent.Done)
         close()
@@ -125,7 +131,7 @@ internal class OpenAiResponsesAdapter(
             }
             put("input", responsesInput(messages))
             putReasoning(request)
-            if (request.tools != null || request.reasoningEffort != ReasoningEffort.AUTO) {
+            if (request.supportsEncryptedReasoning() && (request.tools != null || request.effectiveReasoningEffort() != ReasoningEffort.AUTO)) {
                 putJsonArray("include") { add(JsonPrimitive("reasoning.encrypted_content")) }
             }
         }
@@ -399,6 +405,11 @@ private fun openAiMessages(messages: List<ChatMessage>): JsonArray = buildJsonAr
     messages.forEach { message ->
         add(buildJsonObject {
             put("role", message.role)
+            if (message.role == "assistant") {
+                message.toolCalls.firstOrNull()?.providerContext
+                    ?.firstOrNull { it["type"]?.jsonPrimitive?.contentOrNull == "openai_reasoning" }
+                    ?.get("reasoning_content")?.let { put("reasoning_content", it) }
+            }
             message.toolCallId?.let { put("tool_call_id", it) }
             if (message.toolCalls.isNotEmpty()) {
                 putJsonArray("tool_calls") {

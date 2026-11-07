@@ -52,7 +52,7 @@ fun CustomModelDialog(
                     onValueChange = { value = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("自定义模型") },
-                    placeholder = { Text("例如：gpt-4.1-mini") },
+                    placeholder = { Text("输入服务商提供的完整模型 ID") },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp)
                 )

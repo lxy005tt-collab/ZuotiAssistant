@@ -66,8 +66,8 @@ sealed class BubbleMenuItem {
     data object ToggleSearch : BubbleMenuItem()
     /** 语音识别（占位） */
     data object VoiceRecognition : BubbleMenuItem()
-    /** 设置 */
-    data object Settings : BubbleMenuItem()
+    /** 关闭悬浮窗及截图会话 */
+    data object Exit : BubbleMenuItem()
 }
 
 /**

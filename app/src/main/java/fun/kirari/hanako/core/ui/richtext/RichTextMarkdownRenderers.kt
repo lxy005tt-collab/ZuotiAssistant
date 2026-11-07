@@ -533,6 +533,8 @@ private fun HtmlBlock(
             }
         },
         update = { textView ->
+            textView.setTextColor(contentColor)
+            textView.textSize = bodyTextSize
             textView.text = HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_COMPACT)
         }
     )

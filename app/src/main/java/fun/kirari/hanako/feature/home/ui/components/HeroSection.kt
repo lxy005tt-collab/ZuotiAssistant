@@ -2,22 +2,20 @@ package `fun`.kirari.hanako.feature.home.ui.components
 
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import `fun`.kirari.hanako.app.ProjectInfo
 import `fun`.kirari.hanako.core.data.ScreenCaptureMethod
 import `fun`.kirari.hanako.core.model.ProcessingRoute
+import `fun`.kirari.hanako.core.ui.components.SettingsGroup
 
-/** Inline sections on the page surface; no nested cards or decorative containers. */
+/** Two compact groups, using the same surface and spacing as settings. */
 @Composable
 fun HeroSection(
     overlayEnabled: Boolean,
@@ -34,8 +32,8 @@ fun HeroSection(
     onShowUpdate: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(ProjectInfo.NAME, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 Text(if (overlayEnabled) "悬浮窗运行中" else "截取题目，直接获取答案",
@@ -43,20 +41,16 @@ fun HeroSection(
             }
             if (updateAvailable) TextButton(onClick = onShowUpdate) { Text("更新") }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Column(Modifier.selectableGroup()) {
-            Text("解题方式", style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
-            HomeChoiceRow("多模态", "直接识别图片中的题目", route == ProcessingRoute.MULTIMODAL_DIRECT) {
-                onSelectRoute(ProcessingRoute.MULTIMODAL_DIRECT)
-            }
-            HomeChoiceRow("OCR", "先提取文字，再交给模型分析", route == ProcessingRoute.OCR_THEN_LLM) {
-                onSelectRoute(ProcessingRoute.OCR_THEN_LLM)
-            }
-        }
+        SettingsGroup {
+        ProcessingRouteMenu(route, onSelectRoute)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         CaptureMethodSelector(captureMethod, overlayEnabled, onSelectCaptureMethod)
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        if (captureMethod == ScreenCaptureMethod.SHIZUKU_ADB) {
+            HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            ShizukuStatusCard()
+        }
+        }
+        SettingsGroup {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("悬浮窗", style = MaterialTheme.typography.labelLarge,
@@ -97,23 +91,25 @@ fun HeroSection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        if (captureMethod == ScreenCaptureMethod.SHIZUKU_ADB) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            ShizukuStatusCard()
         }
     }
 }
 
 @Composable
-internal fun HomeChoiceRow(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp)
-        .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-        .padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        RadioButton(selected = selected, onClick = null)
+private fun ProcessingRouteMenu(route: ProcessingRoute, onSelect: (ProcessingRoute) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().heightIn(min = 68.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("解题方式", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Text(if (route == ProcessingRoute.MULTIMODAL_DIRECT) "直接读取图片中的题目" else "先识字，再交给文本模型",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Box {
+            TextButton(onClick = { expanded = true }) { Text(if (route == ProcessingRoute.MULTIMODAL_DIRECT) "多模态 ▾" else "OCR ▾") }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenuItem(text = { Text("多模态 · 直接看图") }, onClick = { onSelect(ProcessingRoute.MULTIMODAL_DIRECT); expanded = false })
+                DropdownMenuItem(text = { Text("OCR · 识字后解题") }, onClick = { onSelect(ProcessingRoute.OCR_THEN_LLM); expanded = false })
+            }
         }
     }
 }

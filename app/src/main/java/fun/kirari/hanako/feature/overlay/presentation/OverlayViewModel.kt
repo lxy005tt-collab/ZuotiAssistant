@@ -9,6 +9,8 @@ import `fun`.kirari.hanako.feature.overlay.state.isSelectingRegion
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import `fun`.kirari.hanako.feature.overlay.service.OverlayService
+import `fun`.kirari.hanako.platform.capture.ScreenCaptureManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -88,12 +90,11 @@ internal class OverlayViewModel(
         isBubbleMenuEnabled = { _uiState.value.settings.automation.bubbleMenuEnabled },
         selectRegion = ::captureNewQuestion,
         toggleWebSearch = ::toggleWebSearch,
-        openSettings = {
-            appContext.startActivity(
-                mainActivityIntent(appContext).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                }
-            )
+        exitOverlay = {
+            answerController.cancel()
+            autoProcessingController.cancelActiveProcessing()
+            ScreenCaptureManager.stop(appContext, _uiState.value.settings.screenCaptureMethod)
+            appContext.stopService(Intent(appContext, OverlayService::class.java))
         },
         openAnswer = ::showCurrentAnswer
     )

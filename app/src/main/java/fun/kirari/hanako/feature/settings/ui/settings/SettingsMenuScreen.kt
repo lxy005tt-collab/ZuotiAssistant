@@ -39,6 +39,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import `fun`.kirari.hanako.BuildConfig
 import `fun`.kirari.hanako.app.ProjectInfo
+import `fun`.kirari.hanako.core.ui.components.SettingsGroup
 
 @Composable
 fun SettingsMenuScreen(
@@ -74,7 +75,7 @@ fun SettingsMenuScreen(
         item {
             SettingsEntryCard(
                 title = "模型设置",
-                subtitle = "为 OCR、文本、多模态分别指定提供方和模型",
+                subtitle = "多模态、文本、OCR 与思考强度",
                 icon = Icons.Default.Memory,
                 onClick = onNavigateModel
             )
@@ -82,7 +83,7 @@ fun SettingsMenuScreen(
         item {
             SettingsEntryCard(
                 title = "联网搜索",
-                subtitle = "配置搜索工具、搜索引擎和 API Key",
+                subtitle = "搜索引擎与 API 配置",
                 icon = Icons.Default.Search,
                 onClick = onNavigateWebSearch
             )
@@ -107,7 +108,7 @@ fun SettingsMenuScreen(
             if (BuildConfig.SHOW_DEBUG_LOGS) {
                 SettingsEntryCard(
                     title = "调试日志",
-                    subtitle = "查看运行日志，便于排查模型、截图与悬浮窗问题",
+                    subtitle = "排查模型、截图与悬浮窗问题",
                     icon = Icons.Default.BugReport,
                     onClick = onNavigateDebugLogs
                 )
@@ -124,11 +125,7 @@ private fun ProjectAttribution() {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
             .onFailure { Toast.makeText(context, "没有可用的浏览器", Toast.LENGTH_SHORT).show() }
     }
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer
-    ) {
+    SettingsGroup(padding = 0.dp) {
         Column(Modifier.padding(vertical = 8.dp)) {
             Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -168,30 +165,24 @@ private fun SettingsEntryCard(
     icon: ImageVector,
     onClick: () -> Unit
 ) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        contentColor = MaterialTheme.colorScheme.onSurface
-    ) {
+    SettingsGroup(padding = 0.dp) {
         Row(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick)
+                .heightIn(min = 76.dp).padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Icon(
                 icon,
                 contentDescription = null,
-                modifier = Modifier.size(28.dp),
+                modifier = Modifier.size(22.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
-            Column {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
                     title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
@@ -200,6 +191,8 @@ private fun SettingsEntryCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            Icon(Icons.Default.ChevronRight, contentDescription = null,
+                modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

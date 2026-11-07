@@ -15,9 +15,9 @@ data class ModelProviderConfig(
     val kind: ProviderKind = ProviderKind.OPENAI_COMPATIBLE,
     val baseUrl: String = kind.defaultBaseUrl,
     val apiKey: String = "",
-    val chatModel: String = "gpt-4o-mini",
-    val visionModel: String = "gpt-4o",
-    val ocrModel: String = "gpt-4.1-mini",
+    val chatModel: String = "",
+    val visionModel: String = "",
+    val ocrModel: String = "",
     val favoriteModels: List<String> = emptyList(),
     val enabled: Boolean = true,
     @kotlinx.serialization.Transient val reasoningEffort: ReasoningEffort = ReasoningEffort.AUTO
@@ -285,23 +285,9 @@ fun AppSettings.normalize(): AppSettings {
             ?: fallbackProvider?.id,
         assistants = normalizedAssistants.assistants,
         selectedAssistantId = normalizedAssistants.selectedAssistantId,
-        textModelSelection = textModelSelection.normalize(
-            providers = availableProviders,
-            fallbackProvider = fallbackProvider,
-            fallbackModel = fallbackProvider?.chatModel.orEmpty()
-        ),
-        visionModelSelection = visionModelSelection.normalize(
-            providers = availableProviders,
-            fallbackProvider = fallbackProvider,
-            fallbackModel = fallbackProvider?.visionModel.orEmpty()
-        ),
-        ocrModelSelection = ocrModelSelection.normalize(
-            providers = availableProviders,
-            fallbackProvider = fallbackProvider,
-            fallbackModel = fallbackProvider?.ocrModel?.ifBlank {
-                fallbackProvider.visionModel
-            } ?: fallbackProvider?.visionModel.orEmpty()
-        ),
+        textModelSelection = textModelSelection.normalize(availableProviders),
+        visionModelSelection = visionModelSelection.normalize(availableProviders),
+        ocrModelSelection = ocrModelSelection.normalize(availableProviders, allowLocalOcr = true),
         lastResult = canonicalHistory.firstOrNull(),
         history = canonicalHistory,
         historyGroups = normalizedGroups,
@@ -367,29 +353,19 @@ private fun AssistantPreset.samePromptProfileAs(other: AssistantPreset): Boolean
 
 private fun ModelSelection.normalize(
     providers: List<ModelProviderConfig>,
-    fallbackProvider: ModelProviderConfig?,
-    fallbackModel: String
+    allowLocalOcr: Boolean = false
 ): ModelSelection {
-    if (isLocalOcrSelection()) {
+    if (allowLocalOcr && isLocalOcrSelection()) {
         return copy(
             providerId = LOCAL_OCR_PROVIDER_ID,
             model = model.ifBlank { LOCAL_OCR_MODEL_ID }
         )
     }
-    val currentProvider = providers.firstOrNull { it.id == providerId }
-    return when {
-        currentProvider != null && model.isNotBlank() -> this
-        currentProvider != null -> copy(model = fallbackModelFrom(currentProvider, fallbackModel))
-        fallbackProvider != null -> ModelSelection(
-            providerId = fallbackProvider.id,
-            model = model.ifBlank { fallbackModel }
-        )
-        else -> this
-    }
-}
-
-private fun fallbackModelFrom(provider: ModelProviderConfig, fallbackModel: String): String {
-    return fallbackModel.ifBlank { provider.chatModel.ifBlank { provider.visionModel.ifBlank { provider.ocrModel } } }
+    // Empty is an intentional choice. Never refill it or redirect a removed provider's
+    // model to another service, including while loading older settings.
+    return if (providers.any { it.id == providerId } && model.isNotBlank()) {
+        copy(model = model.trim())
+    } else ModelSelection()
 }
 
 fun ModelSelection.isLocalOcrSelection(): Boolean = providerId == LOCAL_OCR_PROVIDER_ID

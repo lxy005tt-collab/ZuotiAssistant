@@ -18,7 +18,7 @@ class BubbleMenuRegistryTest {
                 BubbleMenuItem.ShowAnswer,
                 BubbleMenuItem.SelectRegion,
                 BubbleMenuItem.ToggleSearch,
-                BubbleMenuItem.Settings
+                BubbleMenuItem.Exit
             ),
             BubbleMenuRegistry.entries.map { it.item }
         )
@@ -43,8 +43,8 @@ class BubbleMenuRegistryTest {
     }
 
     @Test
-    fun settingsEntry_isAlwaysEnabledAndUnchecked() {
-        val entry = BubbleMenuRegistry.entries.first { it.item == BubbleMenuItem.Settings }
+    fun exitEntry_isAlwaysEnabledAndUnchecked() {
+        val entry = BubbleMenuRegistry.entries.first { it.item == BubbleMenuItem.Exit }
         val settings = AppSettings()
 
         assertTrue(entry.isEnabled(settings))

@@ -58,7 +58,7 @@ class AppSettingsCompatibilityTest {
     }
 
     @Test
-    fun retiredBuiltinSelectionsUseTheRemainingProvidersOwnModels() {
+    fun retiredBuiltinSelectionsStayEmptyInsteadOfChoosingAnotherProvider() {
         val settings = json.decodeCompatibleAppSettings("""
             {
               "providers":[{"id":"custom","chatModel":"chat-new","visionModel":"vision-new"}],
@@ -70,8 +70,8 @@ class AppSettingsCompatibilityTest {
         """.trimIndent())
 
         assertEquals("custom", settings.selectedProviderId)
-        assertEquals(ModelSelection("custom", "chat-new"), settings.textModelSelection)
-        assertEquals(ModelSelection("custom", "vision-new"), settings.visionModelSelection)
+        assertEquals(ModelSelection(), settings.textModelSelection)
+        assertEquals(ModelSelection(), settings.visionModelSelection)
         assertEquals(LOCAL_OCR_PROVIDER_ID, settings.ocrModelSelection.providerId)
     }
 
@@ -92,5 +92,31 @@ class AppSettingsCompatibilityTest {
         assertEquals(ModelSelection(), settings.textModelSelection)
         assertEquals(ModelSelection(), settings.visionModelSelection)
         assertEquals(ModelSelection(), settings.ocrModelSelection)
+    }
+
+    @Test
+    fun clearingOneModelSurvivesSavingReloadingAndDoesNotAffectOtherModels() {
+        val original = AppSettings(
+            providers = listOf(ModelProviderConfig(id = "custom", chatModel = "legacy-default")),
+            textModelSelection = ModelSelection("custom", "text-chosen"),
+            visionModelSelection = ModelSelection("custom", "vision-chosen"),
+            ocrModelSelection = ModelSelection(LOCAL_OCR_PROVIDER_ID, LOCAL_OCR_MODEL_ID)
+        ).normalize()
+        val cleared = original.copy(textModelSelection = ModelSelection()).normalize()
+        val loaded = json.decodeCompatibleAppSettings(json.encodeToString(AppSettings.serializer(), cleared))
+        assertEquals(ModelSelection(), loaded.textModelSelection)
+        assertEquals(original.visionModelSelection, loaded.visionModelSelection)
+        assertEquals(original.ocrModelSelection, loaded.ocrModelSelection)
+    }
+
+    @Test
+    fun newInstallDoesNotPreselectModelsAndRemovedProvidersDoNotRedirectRequests() {
+        val fresh = json.decodeCompatibleAppSettings("{}")
+        assertEquals(ModelSelection(), fresh.textModelSelection)
+        assertEquals(ModelSelection(), fresh.visionModelSelection)
+        assertEquals(ModelSelection(), fresh.ocrModelSelection)
+        val removed = AppSettings(providers = listOf(ModelProviderConfig(id = "remaining")),
+            visionModelSelection = ModelSelection("removed", "private-model")).normalize()
+        assertEquals(ModelSelection(), removed.visionModelSelection)
     }
 }

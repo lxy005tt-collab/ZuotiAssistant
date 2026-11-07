@@ -101,7 +101,7 @@ class AppModelsTest {
     }
 
     @Test
-    fun normalize_repairsBlankSelectionsForExistingProvider() {
+    fun normalize_preservesIntentionalEmptySelectionsEvenWithLegacyProviderDefaults() {
         val provider = ModelProviderConfig(
             id = "provider-1",
             name = "P1",
@@ -119,9 +119,9 @@ class AppModelsTest {
         ).normalize()
 
         assertEquals(provider.id, normalized.selectedProviderId)
-        assertEquals(ModelSelection(provider.id, "chat-1"), normalized.textModelSelection)
-        assertEquals(ModelSelection(provider.id, "vision-1"), normalized.visionModelSelection)
-        assertEquals(ModelSelection(provider.id, "ocr-1"), normalized.ocrModelSelection)
+        assertEquals(ModelSelection(), normalized.textModelSelection)
+        assertEquals(ModelSelection(), normalized.visionModelSelection)
+        assertEquals(ModelSelection(), normalized.ocrModelSelection)
     }
 
     @Test

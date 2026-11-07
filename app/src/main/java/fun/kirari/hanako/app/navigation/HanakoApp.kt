@@ -13,6 +13,7 @@ import `fun`.kirari.hanako.feature.settings.ui.model.ModelSelectionDialogs
 import `fun`.kirari.hanako.feature.settings.ui.model.ModelSettingsScreen
 import `fun`.kirari.hanako.feature.settings.presentation.ConnectionTestState
 import `fun`.kirari.hanako.core.data.ModelPurpose
+import `fun`.kirari.hanako.core.data.ModelSelection
 import `fun`.kirari.hanako.feature.history.presentation.HistoryDetailOperation
 import `fun`.kirari.hanako.feature.home.presentation.LocalScrollToTopController
 import `fun`.kirari.hanako.feature.home.presentation.rememberScrollToTopController
@@ -209,7 +210,7 @@ fun HanakoApp(viewModel: AppViewModel) {
             modifier = if (historyQuoteFocused) Modifier.blur(1.5.dp) else Modifier,
             topBar = {
                 MaterialTheme(colorScheme = chromeColors) {
-                    if (!homeVisible) CenterAlignedTopAppBar(
+                    if (currentRoute != ROUTE_HOME_SHELL) CenterAlignedTopAppBar(
                         modifier = Modifier
                             .then(if (topBarScrollToTopEnabled) {
                                 Modifier.clickable { scrollToTopController.scrollToTop(currentRoute) }
@@ -261,7 +262,8 @@ fun HanakoApp(viewModel: AppViewModel) {
                     }
                 }
             },
-            containerColor = Color.Transparent
+            containerColor = chromeColors.background,
+            contentColor = chromeColors.onBackground
         ) { padding ->
             CompositionLocalProvider(LocalScrollToTopController provides scrollToTopController) {
                 NavHost(
@@ -459,6 +461,7 @@ fun HanakoApp(viewModel: AppViewModel) {
                         val detailState = resultId?.let(detailStates::get)
                         val operation = detailState?.operation
                         val conversationModelPurpose = detailState?.conversationModelPurpose
+                        `fun`.kirari.hanako.core.ui.theme.AnswerTextSize(settings.floatingWindow.answerTextSizeSp) {
                         HistoryDetailScreen(
                             scrollRoute = ROUTE_HANAKO_HISTORY_DETAIL_PATTERN,
                             result = detailState?.result,
@@ -484,6 +487,7 @@ fun HanakoApp(viewModel: AppViewModel) {
                             },
                             onBlockFocusChanged = { historyQuoteFocused = it }
                         )
+                        }
                     }
                     composable(ROUTE_SETTINGS_PROVIDER) {
                         ProviderSettingsScreen(
@@ -523,6 +527,7 @@ fun HanakoApp(viewModel: AppViewModel) {
                         ModelSettingsScreen(
                             settings = settings,
                             onReasoningEffortChange = viewModel::setReasoningEffort,
+                            onClearModel = { viewModel.updateModelSelection(it, ModelSelection()) },
                             onPickModel = {
                                 modelSelectionDialogState = modelSelectionDialogState.copy(
                                     providerPickerTarget = it

@@ -3,8 +3,10 @@ package `fun`.kirari.hanako.core.ui.theme
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -23,5 +25,7 @@ fun HanakoTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable
             }
         }
     }
-    MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
+    CompositionLocalProvider(LocalContentColor provides colorScheme.onBackground) {
+        MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
+    }
 }

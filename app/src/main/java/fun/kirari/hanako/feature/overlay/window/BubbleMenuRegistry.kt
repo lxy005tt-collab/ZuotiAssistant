@@ -49,9 +49,9 @@ object BubbleMenuRegistry {
         //     isChecked = { false }
         // ),
         BubbleMenuEntry(
-            item = BubbleMenuItem.Settings,
-            label = "设置",
-            iconRes = R.drawable.ic_bubble_settings
+            item = BubbleMenuItem.Exit,
+            label = "退出",
+            iconRes = R.drawable.ic_bubble_exit
         )
     )
 }

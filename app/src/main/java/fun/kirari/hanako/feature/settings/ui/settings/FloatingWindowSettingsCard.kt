@@ -59,6 +59,8 @@ internal fun FloatingWindowSettingsCard(settings: FloatingWindowSettings, onChan
             { draft = draft.copy(backgroundOpacityPercent = it) }, commit)
         SettingSlider("答案字号", draft.answerTextSizeSp, 12..22, "${draft.answerTextSizeSp} sp",
             { draft = draft.copy(answerTextSizeSp = it) }, commit)
+        Text("同时用于悬浮窗和历史详情中的 AI 回答。", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         SwitchSettingRow("逐字显示答案", "关闭后，收到的答案内容会立即显示。", draft.typewriterEnabled,
             { draft = draft.copy(typewriterEnabled = it); commit() })
         SwitchSettingRow("点空白处收起", "收起后保留当前答案，也不会中断生成。", draft.closeOnOutsideTap,

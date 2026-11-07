@@ -13,10 +13,15 @@ import `fun`.kirari.hanako.core.data.resolveModelProvider
 import `fun`.kirari.hanako.core.model.ProcessingRoute
 import `fun`.kirari.llm.core.ReasoningEffort
 import `fun`.kirari.llm.core.supportedReasoningEfforts
+import `fun`.kirari.llm.core.effectiveReasoningEffort
+import `fun`.kirari.llm.core.reasoningTokenBudget
 
 val ReasoningEffort.displayLabel: String
     get() = when (this) {
         ReasoningEffort.AUTO -> "自动"
+        ReasoningEffort.NONE -> "关闭思考"
+        ReasoningEffort.MINIMAL -> "极低"
+        ReasoningEffort.ON -> "开启思考"
         ReasoningEffort.LOW -> "低"
         ReasoningEffort.MEDIUM -> "中"
         ReasoningEffort.HIGH -> "高"
@@ -33,9 +38,15 @@ fun ReasoningEffortControl(
 ) {
     val purpose = if (route == ProcessingRoute.OCR_THEN_LLM) ModelPurpose.TEXT else ModelPurpose.VISION
     val provider = settings.resolveModelProvider(purpose)
-    val choices = provider?.let { supportedReasoningEfforts(it.kind, settings.resolveModelName(purpose)) }
+    val model = settings.resolveModelName(purpose)
+    val choices = provider?.let { supportedReasoningEfforts(it.kind, model, it.baseUrl) }
         ?: listOf(ReasoningEffort.AUTO)
-    val selected = settings.reasoningEffort.takeIf { it in choices } ?: ReasoningEffort.AUTO
+    val selected = provider?.let { effectiveReasoningEffort(it.kind, model, settings.reasoningEffort, it.baseUrl) }
+        ?: ReasoningEffort.AUTO
+    fun label(effort: ReasoningEffort): String {
+        val budget = provider?.let { reasoningTokenBudget(it.kind, model, effort, it.baseUrl) }
+        return if (budget != null && budget > 0) "${effort.displayLabel} · $budget token" else effort.displayLabel
+    }
     var expanded by remember { mutableStateOf(false) }
     Box {
         TextButton(onClick = { expanded = true }, enabled = enabled) {
@@ -44,12 +55,12 @@ fun ReasoningEffortControl(
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             choices.forEach { effort ->
                 DropdownMenuItem(
-                    text = { Text(if (effort == selected) "✓ ${effort.displayLabel}" else effort.displayLabel) },
+                    text = { Text(if (effort == selected) "✓ ${label(effort)}" else label(effort)) },
                     onClick = { onChange(effort); expanded = false }
                 )
             }
             if (choices.size == 1) {
-                DropdownMenuItem(text = { Text("当前模型暂只支持自动") }, onClick = {}, enabled = false)
+                DropdownMenuItem(text = { Text(if (model.isBlank()) "请先选择解题模型" else "未识别可调档位，沿用服务默认值") }, onClick = {}, enabled = false)
             }
         }
     }

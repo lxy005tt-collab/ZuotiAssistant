@@ -37,7 +37,7 @@ internal fun HanakoHomeScreen(
         val context = LocalContext.current
         LazyColumn(
             modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 24.dp),
+            contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {

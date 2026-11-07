@@ -1,227 +1,85 @@
 package `fun`.kirari.hanako.feature.settings.ui.model
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.outlined.DocumentScanner
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import `fun`.kirari.hanako.core.data.AppSettings
-import `fun`.kirari.hanako.core.data.LOCAL_OCR_PROVIDER_ID
-import `fun`.kirari.hanako.core.data.ModelPurpose
-import `fun`.kirari.hanako.core.data.displayName
-import `fun`.kirari.hanako.core.data.resolveModelName
-import `fun`.kirari.hanako.core.data.resolveModelProvider
+import `fun`.kirari.hanako.core.data.*
 import `fun`.kirari.hanako.core.ui.components.ReasoningEffortControl
+import `fun`.kirari.hanako.core.ui.components.SettingsGroup
 import `fun`.kirari.llm.core.ReasoningEffort
 
 @Composable
 fun ModelSettingsScreen(
     settings: AppSettings,
     onPickModel: (ModelPurpose) -> Unit,
+    onClearModel: (ModelPurpose) -> Unit,
     onReasoningEffortChange: (ReasoningEffort) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 28.dp, bottom = 80.dp, start = 16.dp, end = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 顶层大标题区域
         item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-            ) {
-                Text(
-                    text = "模型设置",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "为每类任务配置最适合的 AI 模型",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text("多模态可独立解题。使用 OCR 解题时，才需要同时选择文本和 OCR 模型。未使用的模型可以留空。",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-
-        // 将设置项收纳进统一的 MD3 大卡片容器中
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("模型思考强度", style = MaterialTheme.typography.titleMedium)
-                    ReasoningEffortControl(settings = settings, onChange = onReasoningEffortChange)
-                    Text("应用于当前识题模式的解题、重新生成和追问。自动使用模型默认设置；较高强度可能增加等待时间和用量。档位支持取决于模型和提供方。",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        listOf(ModelPurpose.VISION, ModelPurpose.TEXT, ModelPurpose.OCR).forEach { purpose ->
+            item(key = purpose.name) {
+                SettingsGroup {
+                    ModelPurposeItem(settings, purpose, { onPickModel(purpose) }, { onClearModel(purpose) })
                 }
             }
         }
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                )
-            ) {
-                Column {
-                    val purposes = ModelPurpose.entries.toList()
-                    purposes.forEachIndexed { index, purpose ->
-                        ModelPurposeItem(
-                            settings = settings,
-                            purpose = purpose,
-                            onPick = { onPickModel(purpose) }
-                        )
-
-                        // 选项间优雅的细分割线
-                        if (index < purposes.size - 1) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                            )
-                        }
-                    }
-                }
+            SettingsGroup {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("模型思考强度", style = MaterialTheme.typography.titleSmall)
+                ReasoningEffortControl(settings = settings, onChange = onReasoningEffortChange)
+                Text("应用于当前解题方式的回答、重试和追问。自动沿用服务默认值；较高强度可能增加等待时间和用量。",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             }
         }
     }
 }
 
 @Composable
-private fun ModelPurposeItem(
-    settings: AppSettings,
-    purpose: ModelPurpose,
-    onPick: () -> Unit
-) {
+private fun ModelPurposeItem(settings: AppSettings, purpose: ModelPurpose, onPick: () -> Unit, onClear: () -> Unit) {
     val provider = settings.resolveModelProvider(purpose)
     val model = settings.resolveModelName(purpose)
-    val isLocal = purpose == ModelPurpose.OCR &&
-        settings.ocrModelSelection.providerId == LOCAL_OCR_PROVIDER_ID
-    val hasSelection = isLocal || provider != null
-
-    val providerLine = when {
-        isLocal -> "本地设备"
-        provider != null -> provider.name
-        else -> "未选择"
-    }
-    val modelLine = when {
-        isLocal -> model
-        provider != null && model.isNotBlank() -> model
-        else -> ""
-    }
-
-Row(
-    modifier = Modifier
-        .fillMaxWidth()
-        .clickable(onClick = onPick)
-        .padding(horizontal = 16.dp, vertical = 20.dp), // 稍微拉大一点上下间距，代替文字的饱满感
-    verticalAlignment = Alignment.CenterVertically
-) {
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = purposeIcon(purpose),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-            modifier = Modifier.size(24.dp)
-        )
-    }
-
-    Spacer(modifier = Modifier.width(16.dp))
-
-    // 左侧：仅保留纯粹的功能核心名称
-    Text(
-        text = "${purpose.displayName}模型",
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.weight(1f) // 一个人吃下左边所有剩余空间
-    )
-
-    Spacer(modifier = Modifier.width(16.dp))
-
-    // 右侧：非常宽敞地展示服务商和模型名
-    Column(
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(
-            text = providerLine,
-            style = MaterialTheme.typography.bodyMedium, // 升级到 body 字号
-            fontWeight = FontWeight.Medium,
-            color = if (hasSelection) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.error,
-            textAlign = TextAlign.End
-        )
-        if (modelLine.isNotBlank()) {
-            Text(
-                text = modelLine,
-                style = MaterialTheme.typography.labelLarge, // 升级到 labelLarge
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.End
-            )
+    val isLocal = purpose == ModelPurpose.OCR && settings.ocrModelSelection.isLocalOcrSelection()
+    val hasSelection = isLocal || (provider != null && model.isNotBlank())
+    Column {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("${purpose.displayName}模型", style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            TextButton(onClick = onClear, enabled = hasSelection) { Text("留空") }
+        }
+        Text(when (purpose) {
+            ModelPurpose.VISION -> "直接看图并回答，不依赖下面两个模型"
+            ModelPurpose.TEXT -> "根据 OCR 识别的文字生成答案"
+            ModelPurpose.OCR -> "只负责识字，也可选择本地 OCR"
+        }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth().clickable(onClick = onPick).padding(vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(if (hasSelection) model else "未选择 · 点击设置", maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+                if (hasSelection) Text(if (isLocal) "本地设备" else provider?.name.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = "选择${purpose.displayName}模型",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
         }
     }
-
-    Spacer(modifier = Modifier.width(12.dp))
-
-    Icon(
-        imageVector = Icons.Filled.ChevronRight,
-        contentDescription = null,
-        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-        modifier = Modifier.size(20.dp)
-    )
-}
-}
-
-private fun purposeIcon(purpose: ModelPurpose): ImageVector = when (purpose) {
-    ModelPurpose.OCR -> Icons.Outlined.DocumentScanner
-    ModelPurpose.TEXT -> Icons.AutoMirrored.Outlined.Chat
-    ModelPurpose.VISION -> Icons.Outlined.Image
-}
-
-private fun purposeHint(purpose: ModelPurpose): String = when (purpose) {
-    ModelPurpose.OCR -> "从屏幕截图中识别文字"
-    ModelPurpose.TEXT -> "生成解答与文本推理"
-    ModelPurpose.VISION -> "理解并分析图像内容"
 }

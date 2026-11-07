@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -21,9 +23,11 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -33,7 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.onSizeChanged
@@ -50,6 +54,7 @@ import `fun`.kirari.hanako.core.ui.richtext.unwrapCopyMarkers
 import `fun`.kirari.hanako.feature.overlay.state.OverlayUiState
 import `fun`.kirari.hanako.feature.overlay.state.currentAnswerText
 import `fun`.kirari.hanako.platform.clipboard.copyToClipboardWithToast
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun ResultOverlaySheet(
@@ -156,17 +161,26 @@ internal fun ResultOverlaySheet(
         }
         if (actionsVisible) {
             val appearance = remember { Animatable(0f) }
-            LaunchedEffect(Unit) { appearance.animateTo(1f, tween(160)) }
+            // The native window owns height/clip animation. Do not animate Compose height
+            // every frame: that would repeatedly cancel and restart the window animation.
+            LaunchedEffect(Unit) {
+                delay(120)
+                appearance.animateTo(1f, tween(180))
+            }
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
             Row(
                 Modifier.fillMaxWidth().onSizeChanged { actionsHeight = it.height }
-                    .alpha(appearance.value)
-                    .padding(end = 8.dp, bottom = 2.dp),
-                horizontalArrangement = Arrangement.End
+                    .graphicsLayer {
+                        alpha = appearance.value
+                        translationY = (1f - appearance.value) * 4.dp.toPx()
+                    }
+                    .padding(bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp, androidx.compose.ui.Alignment.CenterHorizontally)
             ) {
                 IconButton(
-                    onClick = { copyToClipboardWithToast(context, "Hanako 答案", unwrapCopyMarkers(copyText), "已复制答案") },
+                    onClick = { copyToClipboardWithToast(context, "答案", unwrapCopyMarkers(copyText), "已复制答案") },
                     enabled = copyText.isNotBlank(),
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.width(48.dp).height(32.dp)
                 ) {
                     Icon(Icons.Default.ContentCopy, contentDescription = "复制答案", modifier = Modifier.size(18.dp))
                 }
@@ -178,7 +192,7 @@ internal fun ResultOverlaySheet(
                         if (lastFollowUp != null) onRetryFollowUp() else onRegenerate()
                     },
                     enabled = idle,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.width(48.dp).height(32.dp)
                 ) {
                     Icon(Icons.Default.Refresh, contentDescription = "重试", modifier = Modifier.size(20.dp))
                 }
@@ -188,12 +202,13 @@ internal fun ResultOverlaySheet(
                         if (!showComposer) { focusManager.clearFocus(); keyboard?.hide() }
                     },
                     enabled = idle && uiState.result != null && uiState.result.automationAction == null,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.width(48.dp).height(32.dp)
                 ) {
                     Icon(painterResource(R.drawable.ic_bubble_answer),
                         contentDescription = if (showComposer) "收起追问" else "追问",
                         modifier = Modifier.size(20.dp))
                 }
+            }
             }
         }
     }

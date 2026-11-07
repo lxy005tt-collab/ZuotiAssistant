@@ -25,7 +25,7 @@ internal class OverlayInteractionController(
     private val isBubbleMenuEnabled: () -> Boolean,
     private val selectRegion: () -> Unit,
     private val toggleWebSearch: () -> Unit,
-    private val openSettings: () -> Unit,
+    private val exitOverlay: () -> Unit,
     private val openAnswer: () -> Unit
 ) {
     private val tag = "HanakoOverlayInteraction"
@@ -163,7 +163,7 @@ internal class OverlayInteractionController(
             BubbleMenuItem.ShowAnswer -> openAnswer()
             BubbleMenuItem.SelectRegion -> selectRegion()
             BubbleMenuItem.ToggleSearch -> toggleWebSearch()
-            BubbleMenuItem.Settings -> openSettings()
+            BubbleMenuItem.Exit -> exitOverlay()
             BubbleMenuItem.VoiceRecognition -> {
                 // 语音功能暂未实现
             }

@@ -22,8 +22,8 @@ class ReasoningRequestTest {
 
     @Test
     fun effort_isSentThroughEachNativeProtocol() = runBlocking {
-        assertEquals("high", payload(ProviderKind.OPENAI_COMPATIBLE, "gpt-reasoner", ReasoningEffort.HIGH)["reasoning_effort"]?.jsonPrimitive?.content)
-        val responses = payload(ProviderKind.OPENAI_RESPONSES, "gpt-reasoner", ReasoningEffort.XHIGH)
+        assertEquals("high", payload(ProviderKind.OPENAI_COMPATIBLE, "gpt-5.4", ReasoningEffort.HIGH)["reasoning_effort"]?.jsonPrimitive?.content)
+        val responses = payload(ProviderKind.OPENAI_RESPONSES, "gpt-5.4", ReasoningEffort.XHIGH)
         assertEquals("xhigh", responses["reasoning"]?.jsonObject?.get("effort")?.jsonPrimitive?.content)
         val claude = payload(ProviderKind.ANTHROPIC, "claude-opus-5-5", ReasoningEffort.HIGH)
         assertEquals("high", claude["output_config"]?.jsonObject?.get("effort")?.jsonPrimitive?.content)
@@ -67,7 +67,7 @@ class ReasoningRequestTest {
             "response.output_item.done" to """{"item":{"type":"reasoning","id":"rs1","summary":[],"encrypted_content":"opaque-state"}}""",
             "response.output_item.done" to """{"item":{"type":"function_call","id":"fc1","call_id":"call1","name":"web_search","arguments":"{\"query\":\"sample\"}"}}"""
         )
-        val body = continuation(ProviderKind.OPENAI_RESPONSES, "gpt-reasoner", events)
+        val body = continuation(ProviderKind.OPENAI_RESPONSES, "gpt-5.4", events)
         val input = body.getValue("input").jsonArray
         assertEquals("reasoning", input[0].jsonObject["type"]?.jsonPrimitive?.content)
         assertEquals("opaque-state", input[0].jsonObject["encrypted_content"]?.jsonPrimitive?.content)
@@ -85,6 +85,107 @@ class ReasoningRequestTest {
         val response = contents[1].jsonObject.getValue("parts").jsonArray[0].jsonObject.getValue("functionResponse").jsonObject
         assertEquals("web_search", response["name"]?.jsonPrimitive?.content)
         assertEquals("search result", response.getValue("response").jsonObject["result"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun chatThinkingContext_survivesSearchWithoutBeingDisplayedAsAnAnswer() = runBlocking {
+        val events = sse(
+            null to """{"choices":[{"delta":{"reasoning_content":"context "}}]}""",
+            null to """{"choices":[{"delta":{"reasoning_content":"continued","tool_calls":[{"index":0,"id":"call1","function":{"name":"web_search","arguments":"{\"query\":\"sample\"}"}}]}}]}"""
+        )
+        val body = continuation(ProviderKind.OPENAI_COMPATIBLE, "deepseek-flash", events)
+        val assistant = body.getValue("messages").jsonArray[0].jsonObject
+        assertEquals("context continued", assistant["reasoning_content"]?.jsonPrimitive?.content)
+        assertFalse(assistant.getValue("content").toString().contains("context continued"))
+    }
+
+    @Test
+    fun deepSeekAndQwenUseTheirDocumentedMappingsAndNeverBothBudgetAndEffort() = runBlocking {
+        val deep = payload(ProviderKind.OPENAI_COMPATIBLE, "deepseek-flash", ReasoningEffort.MEDIUM)
+        assertEquals("high", deep["reasoning_effort"]?.jsonPrimitive?.content)
+        assertEquals("enabled", deep["thinking"]?.jsonObject?.get("type")?.jsonPrimitive?.content)
+        val off = payload(ProviderKind.OPENAI_COMPATIBLE, "deepseek-v4-pro", ReasoningEffort.NONE)
+        assertEquals("disabled", off["thinking"]?.jsonObject?.get("type")?.jsonPrimitive?.content)
+        assertFalse(off.containsKey("reasoning_effort"))
+        val modern = payload(ProviderKind.OPENAI_COMPATIBLE, "qwen3.8-flash", ReasoningEffort.HIGH)
+        assertEquals("xhigh", modern["reasoning_effort"]?.jsonPrimitive?.content)
+        assertFalse(modern.containsKey("thinking_budget"))
+        val older = payload(ProviderKind.OPENAI_COMPATIBLE, "qwen3.5-plus", ReasoningEffort.MEDIUM)
+        assertEquals(true, older["enable_thinking"]?.jsonPrimitive?.boolean)
+        assertEquals(8192, older["thinking_budget"]?.jsonPrimitive?.int)
+        assertFalse(older.containsKey("reasoning_effort"))
+        val responses = payload(ProviderKind.OPENAI_RESPONSES, "deepseek-flash", ReasoningEffort.MAX)
+        assertEquals("max", responses["reasoning"]?.jsonObject?.get("effort")?.jsonPrimitive?.content)
+        assertFalse(responses.containsKey("include"))
+    }
+
+    @Test
+    fun switchOnlyModelsDoNotPretendToHaveLowMediumHigh() = runBlocking {
+        for (model in listOf("kimi-k2.5", "glm-4.7")) {
+            assertEquals(listOf(ReasoningEffort.AUTO, ReasoningEffort.NONE, ReasoningEffort.ON),
+                supportedReasoningEfforts(ProviderKind.OPENAI_COMPATIBLE, model))
+            val body = payload(ProviderKind.OPENAI_COMPATIBLE, model, ReasoningEffort.ON)
+            assertEquals("enabled", body["thinking"]?.jsonObject?.get("type")?.jsonPrimitive?.content)
+            assertFalse(body.containsKey("reasoning_effort"))
+        }
+        val forced = payload(ProviderKind.OPENAI_COMPATIBLE, "glm-5.3", ReasoningEffort.NONE)
+        assertFalse(forced.containsKey("thinking"))
+        assertFalse(forced.containsKey("reasoning_effort"))
+    }
+
+    @Test
+    fun oldClaudeUsesBudgetWhileNewClaudeUsesAdaptiveEffort() = runBlocking {
+        val old = payload(ProviderKind.ANTHROPIC, "claude-opus-4-5", ReasoningEffort.MEDIUM)
+        assertEquals("enabled", old["thinking"]?.jsonObject?.get("type")?.jsonPrimitive?.content)
+        assertEquals(8192, old["thinking"]?.jsonObject?.get("budget_tokens")?.jsonPrimitive?.int)
+        assertTrue(old.getValue("max_tokens").jsonPrimitive.int > 8192)
+        assertEquals("medium", old["output_config"]?.jsonObject?.get("effort")?.jsonPrimitive?.content)
+        val current = payload(ProviderKind.ANTHROPIC, "anthropic/claude-opus-4.7", ReasoningEffort.MAX)
+        assertEquals("adaptive", current["thinking"]?.jsonObject?.get("type")?.jsonPrimitive?.content)
+        assertFalse(current["thinking"]!!.jsonObject.containsKey("budget_tokens"))
+    }
+
+    @Test
+    fun unknownOrNonReasoningModelsDoNotReceiveSpeculativeParameters() = runBlocking {
+        for ((kind, model) in listOf(ProviderKind.OPENAI_COMPATIBLE to "custom-model",
+            ProviderKind.OPENAI_COMPATIBLE to "gpt-4.1", ProviderKind.ANTHROPIC to "claude-opus-4-99",
+            ProviderKind.GOOGLE to "gemini-unknown")) {
+            val body = payload(kind, model, ReasoningEffort.HIGH)
+            for (key in listOf("reasoning", "reasoning_effort", "thinking", "thinking_budget", "generationConfig")) {
+                assertFalse("$model: $key", body.containsKey(key))
+            }
+        }
+        assertFalse(ReasoningEffort.NONE in supportedReasoningEfforts(ProviderKind.OPENAI_RESPONSES, "gpt-6-astra"))
+        assertFalse(ReasoningEffort.MAX in supportedReasoningEfforts(ProviderKind.OPENAI_COMPATIBLE, "gpt-5.4"))
+        assertFalse(ReasoningEffort.XHIGH in supportedReasoningEfforts(ProviderKind.ANTHROPIC, "claude-sonnet-4-6"))
+    }
+
+    @Test
+    fun geminiBudgetsAndLevelsStayWithinModelLimits() = runBlocking {
+        val pro = payload(ProviderKind.GOOGLE, "gemini-2.5-pro", ReasoningEffort.HIGH)
+        assertEquals(32768, pro["generationConfig"]!!.jsonObject["thinkingConfig"]!!.jsonObject["thinkingBudget"]!!.jsonPrimitive.int)
+        val flash = payload(ProviderKind.GOOGLE, "gemini-2.5-flash", ReasoningEffort.NONE)
+        assertEquals(0, flash["generationConfig"]!!.jsonObject["thinkingConfig"]!!.jsonObject["thinkingBudget"]!!.jsonPrimitive.int)
+        assertFalse(ReasoningEffort.NONE in supportedReasoningEfforts(ProviderKind.GOOGLE, "gemini-2.5-pro"))
+        assertFalse(ReasoningEffort.MINIMAL in supportedReasoningEfforts(ProviderKind.GOOGLE, "gemini-4-argon"))
+        val argon = payload(ProviderKind.GOOGLE, "gemini-4-argon", ReasoningEffort.HIGH)
+        assertEquals("HIGH", argon["generationConfig"]!!.jsonObject["thinkingConfig"]!!.jsonObject["thinkingLevel"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun hostedModelMappingsUseTheProvidersDocumentedDialect() {
+        val kind = ProviderKind.OPENAI_COMPATIBLE
+        val baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        assertEquals(ReasoningEffort.HIGH, effectiveReasoningEffort(kind, "deepseek-v4-pro", ReasoningEffort.LOW, baseUrl))
+        assertEquals(ReasoningEffort.LOW, effectiveReasoningEffort(kind, "deepseek-v4-pro-0813", ReasoningEffort.LOW, baseUrl))
+        assertEquals(listOf(ReasoningEffort.AUTO, ReasoningEffort.MAX), supportedReasoningEfforts(kind, "kimi/kimi-k3.1-pro", baseUrl))
+        val request = StreamRequest(provider = ProviderConfig(kind, baseUrl, "fixture"), model = "glm-5.2",
+            userPrompt = "question", reasoningEffort = ReasoningEffort.NONE,
+            firstDeltaTimeoutMillis = 2500L, trustAllHttpsCertificates = false)
+        val body = buildJsonObject { putReasoning(request) }
+        assertEquals(false, body["enable_thinking"]?.jsonPrimitive?.boolean)
+        assertFalse(body.containsKey("reasoning_effort"))
+        assertFalse(body.containsKey("thinking"))
     }
 
     private suspend fun payload(kind: ProviderKind, model: String, effort: ReasoningEffort): JsonObject {
