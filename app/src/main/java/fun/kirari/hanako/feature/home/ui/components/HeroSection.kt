@@ -10,7 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import `fun`.kirari.hanako.app.ProjectInfo
 import `fun`.kirari.hanako.core.data.ScreenCaptureMethod
 import `fun`.kirari.hanako.core.model.ProcessingRoute
 import `fun`.kirari.hanako.core.ui.components.SettingsGroup
@@ -28,19 +27,9 @@ fun HeroSection(
     onOpenOverlayPermission: () -> Unit,
     onToggleOverlay: (Boolean) -> Unit,
     onStartAutoMode: () -> Unit,
-    updateAvailable: Boolean = false,
-    onShowUpdate: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(ProjectInfo.NAME, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text(if (overlayEnabled) "悬浮窗运行中" else "截取题目，直接获取答案",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (updateAvailable) TextButton(onClick = onShowUpdate) { Text("更新") }
-        }
         SettingsGroup {
         ProcessingRouteMenu(route, onSelectRoute)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -53,7 +42,7 @@ fun HeroSection(
         SettingsGroup {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("悬浮窗", style = MaterialTheme.typography.labelLarge,
+                Text(if (overlayEnabled) "悬浮窗 · 已开启" else "悬浮窗", style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                 TextButton(onClick = onOpenOverlayPermission) { Text("权限设置") }
             }

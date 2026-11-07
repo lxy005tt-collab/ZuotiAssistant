@@ -1,7 +1,9 @@
 import java.io.FileInputStream
 import java.util.Properties
 
-val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystorePropertiesFile = rootProject.file(
+    providers.gradleProperty("hanakoKeystoreProperties").orNull ?: "keystore.properties"
+)
 val keystoreProperties = Properties().apply {
     if (keystorePropertiesFile.exists()) {
         load(FileInputStream(keystorePropertiesFile))
@@ -48,8 +50,8 @@ android {
         applicationId = "fun.kirari.hanako"
         minSdk = 24
         targetSdk = 35
-        versionCode = 19
-        versionName = "0.1.0-alpha"
+        versionCode = 20
+        versionName = "1.0.0"
         manifestPlaceholders["appLabel"] = "@string/app_name"
 
         buildConfigField("boolean", "SHOW_DEBUG_LOGS", showDebugLogs.toString())
@@ -103,6 +105,15 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        // Compatibility channel for existing .dev installations. Keep their
+        // original certificate and data, with the same optimizations as release.
+        create("compat") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".dev"
+            manifestPlaceholders["appLabel"] = "做题小助手 测试版"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
         }
     }
 

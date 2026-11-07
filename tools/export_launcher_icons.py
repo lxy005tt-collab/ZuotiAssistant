@@ -1,7 +1,8 @@
 """Export Android adaptive/legacy icons from one vector design.
 
 Usage: python tools/export_launcher_icons.py --resvg-module <path to @resvg/resvg-js>
-Requires Pillow and @resvg/resvg-js. Outputs retain transparent launcher masks.
+Requires Pillow and @resvg/resvg-js. Edit docs/branding/cat.svg, then run this
+exporter. All launcher assets and the in-app icon share that vector geometry.
 """
 import argparse
 from pathlib import Path
@@ -14,48 +15,54 @@ ROOT = Path(__file__).resolve().parents[1]
 RES = ROOT / "app/src/main/res"
 ANDROID = "http://schemas.android.com/apk/res/android"
 ET.register_namespace("android", ANDROID)
+SOURCE = ROOT / "docs/branding/cat.svg"
+SVG = "http://www.w3.org/2000/svg"
 
-BACKGROUND = [
-    {"fill": "#263753", "d": "M0,0H108V108H0Z"},
-    {"fill": "#304865", "d": "M0,0H108V14C69,16 30,50 0,86Z"},
-]
-FOREGROUND = [
-    {"fill": "#182A44", "d": "M39,31H60L73,43V72Q73,78 67,78H39Q33,78 33,72V37Q33,31 39,31Z"},
-    {"fill": "#FFF7E9", "d": "M38,28H58L70,40V69Q70,75 64,75H38Q32,75 32,69V34Q32,28 38,28Z"},
-    {"fill": "#A8DED4", "d": "M58,28V35Q58,40 63,40H70Z"},
-    {"fill": "none", "stroke": "#354B64", "stroke-width": "3", "stroke-linecap": "round", "d": "M41,41H49M41,48H47"},
-    {"fill": "#FFF7E9", "stroke": "#263753", "stroke-width": "4.5", "d": "M68,59A11,11 0,1 0,46 59A11,11 0,1 0,68 59"},
-    {"fill": "none", "stroke": "#65E0C3", "stroke-width": "6", "stroke-linecap": "round", "d": "M65.5,67.5L75,77"},
-    {"fill": "#3CA895", "d": "M57,52L59,57L64,59L59,61L57,66L55,61L50,59L55,57Z"},
-    {"fill": "#F4C879", "d": "M74,29L75.4,32.6L79,34L75.4,35.4L74,39L72.6,35.4L69,34L72.6,32.6Z"},
-]
-MONOCHROME = [
-    {"fill": "none", "stroke": "#FFFFFF", "stroke-width": "4", "stroke-linejoin": "round", "stroke-linecap": "round", "d": "M42,75H38Q32,75 32,69V34Q32,28 38,28H58L70,40V45M58,28V40H70M41,41H49M41,48H45M68,59A11,11 0,1 0,46 59A11,11 0,1 0,68 59M65.5,67.5L75,77"},
-    {"fill": "#FFFFFF", "d": "M57,52L59,57L64,59L59,61L57,66L55,61L50,59L55,57Z"},
-]
+def design_layers():
+    root = ET.parse(SOURCE).getroot()
+    layers = {}
+    for name in ("background", "foreground", "monochrome"):
+        group = root.find(f"{{{SVG}}}g[@id='{name}']")
+        if group is None or not len(group):
+            raise ValueError(f"Missing SVG layer: {name}")
+        if any(child.tag != f"{{{SVG}}}path" for child in group):
+            raise ValueError("Icon layers must contain explicit path elements")
+        layers[name] = [dict(child.attrib) for child in group]
+    return layers
 
-def vector(paths):
+def vector(paths, cropped=False):
+    size = "72" if cropped else "108"
     node = ET.Element("vector", {f"{{{ANDROID}}}{key}": value for key, value in
-        {"width": "108dp", "height": "108dp", "viewportWidth": "108", "viewportHeight": "108"}.items()})
+        {"width": f"{size}dp", "height": f"{size}dp", "viewportWidth": size, "viewportHeight": size}.items()})
+    parent = ET.SubElement(node, "group", {
+        f"{{{ANDROID}}}translateX": "-18", f"{{{ANDROID}}}translateY": "-18"
+    }) if cropped else node
     names = {"fill": "fillColor", "stroke": "strokeColor", "stroke-width": "strokeWidth",
-        "stroke-linecap": "strokeLineCap", "stroke-linejoin": "strokeLineJoin", "d": "pathData"}
+        "stroke-linecap": "strokeLineCap", "stroke-linejoin": "strokeLineJoin", "d": "pathData", "fill-rule": "fillType"}
     for shape in paths:
-        ET.SubElement(node, "path", {f"{{{ANDROID}}}{names[k]}": "#00000000" if v == "none" else v for k, v in shape.items()})
+        attrs = {f"{{{ANDROID}}}{names[k]}": {"none": "#00000000", "evenodd": "evenOdd", "nonzero": "nonZero"}.get(v, v)
+                 for k, v in shape.items()}
+        ET.SubElement(parent, "path", attrs)
     ET.indent(node)
     return ET.tostring(node, encoding="unicode") + "\n"
 
-def svg(round_icon=False):
-    mask = '<circle cx="54" cy="54" r="54"/>' if round_icon else '<rect width="108" height="108" rx="25"/>'
-    paths = "".join(ET.tostring(ET.Element("path", shape), encoding="unicode") for shape in BACKGROUND + FOREGROUND)
-    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108"><defs><clipPath id="mask">{mask}</clipPath></defs><g clip-path="url(#mask)">{paths}</g></svg>'
+def svg(layers, round_icon=False):
+    # Adaptive launchers expose the middle 72dp of the 108dp layers. Match that
+    # scale for legacy launchers and the app bar instead of shrinking the mark.
+    mask = '<circle cx="54" cy="54" r="36"/>' if round_icon else '<rect x="18" y="18" width="72" height="72" rx="18"/>'
+    paths = "\n".join(ET.tostring(ET.Element("path", shape), encoding="unicode") for shape in layers["background"] + layers["foreground"])
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72"><defs><clipPath id="mask">{mask}</clipPath></defs><g clip-path="url(#mask)">\n{paths}\n</g></svg>\n'
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--resvg-module", required=True)
     parser.add_argument("--preview", type=Path)
     args = parser.parse_args()
-    for name, paths in (("background", BACKGROUND), ("foreground", FOREGROUND), ("monochrome", MONOCHROME)):
+    layers = design_layers()
+    for name, paths in layers.items():
         (RES / f"drawable/ic_launcher_{name}.xml").write_text(vector(paths), encoding="utf-8")
+    (RES / "drawable/ic_app_icon.xml").write_text(
+        vector(layers["background"] + layers["foreground"], cropped=True), encoding="utf-8")
     for name in ("ic_launcher", "ic_launcher_round"):
         path = RES / f"mipmap-anydpi-v26/{name}.xml"
         path.write_text(path.read_text(encoding="utf-8").replace(
@@ -63,8 +70,8 @@ def main():
             '<monochrome android:drawable="@drawable/ic_launcher_monochrome"'), encoding="utf-8")
     source = ROOT / "docs/branding"
     source.mkdir(parents=True, exist_ok=True)
-    (source / "launcher.svg").write_text(svg(), encoding="utf-8")
-    with tempfile.TemporaryDirectory(prefix="hanako-icons-") as directory:
+    (source / "launcher.svg").write_text(svg(layers), encoding="utf-8")
+    with tempfile.TemporaryDirectory(prefix="zuoti-icons-") as directory:
         temporary = Path(directory)
         script = temporary / "render.cjs"
         script.write_text("const fs=require('fs'); const {Resvg}=require(process.argv[2]); "
@@ -72,7 +79,7 @@ def main():
             "fs.writeFileSync(process.argv[4],new Resvg(svg,{fitTo:{mode:'width',value:1024}}).render().asPng());", encoding="utf-8")
         for round_icon in (False, True):
             input_file, output_file = temporary / "icon.svg", temporary / "icon.png"
-            input_file.write_text(svg(round_icon), encoding="utf-8")
+            input_file.write_text(svg(layers, round_icon), encoding="utf-8")
             subprocess.run(["node", str(script), args.resvg_module, str(input_file), str(output_file)], check=True)
             with Image.open(output_file) as image:
                 for density, size in {"mdpi":48,"hdpi":72,"xhdpi":96,"xxhdpi":144,"xxxhdpi":192}.items():
@@ -81,7 +88,7 @@ def main():
                 if args.preview and not round_icon:
                     args.preview.parent.mkdir(parents=True, exist_ok=True)
                     image.save(args.preview)
-    print("Exported adaptive, monochrome, and ten density-specific launcher icons.")
+    print("Exported shared app icon, adaptive layers, monochrome, and ten legacy icons from cat.svg.")
 
 if __name__ == "__main__":
     main()

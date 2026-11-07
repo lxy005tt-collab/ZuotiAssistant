@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-labelledby="title desc">
+  <title id="title">做题小助手 · 低多边形猫</title>
+  <desc id="desc">以黑、白、灰三角切面绘制的猫头像。前景位于 Android 自适应图标安全区，应用内与桌面使用同一份矢量。</desc>
+  <g id="background">
+    <path fill="#F2F2F2" d="M0,0H108V108H0Z"/>
+  </g>
+  <g id="foreground">
+    <path fill="#171717" d="M33,29L47,39H61L75,29L78,55L74,69L64,78L57,82H51L44,78L34,69L30,55Z"/>
+    <path fill="#424242" d="M34,33L45,41L34,48Z"/>
+    <path fill="#9B9B9B" d="M36,36L41,41L36,45Z"/>
+    <path fill="#333333" d="M74,33L63,41L74,48Z"/>
+    <path fill="#BCBCBC" d="M72,36L67,41L72,45Z"/>
+    <path fill="#E3E3E3" d="M47,41H61L54,55Z"/>
+    <path fill="#CECECE" d="M34,48L47,41L54,55L43,52Z"/>
+    <path fill="#6A6A6A" d="M61,41L74,48L65,52L54,55Z"/>
+    <path fill="#FAFAFA" d="M32,55L34,48L43,52L39,64Z"/>
+    <path fill="#4A4A4A" d="M74,48L76,55L69,64L65,52Z"/>
+    <path fill="#AFAFAF" d="M43,52L54,55L49,64H39Z"/>
+    <path fill="#333333" d="M54,55L65,52L69,64H59Z"/>
+    <path fill="#DDDDDD" d="M39,64H49L54,69L44,77L36,68Z"/>
+    <path fill="#565656" d="M59,64H69L72,68L64,77L54,69Z"/>
+    <path fill="#888888" d="M32,55L39,64L36,68L34,64Z"/>
+    <path fill="#242424" d="M76,55L74,64L72,68L69,64Z"/>
+    <path fill="#F5F5F5" d="M35,64L46,67L43,72L37,68Z"/>
+    <path fill="#E0E0E0" d="M62,67L73,64L71,69L65,73Z"/>
+    <path fill="#F5F5F5" d="M49,61L54,57L59,61L54,67Z"/>
+    <path fill="#EBEBEB" d="M44,77L54,69V80H51Z"/>
+    <path fill="#BEBEBE" d="M54,69L64,77L57,80H54Z"/>
+    <path fill="#171717" d="M36,53L47,55L44,59L39,58Z"/>
+    <path fill="#FFFFFF" d="M38,54L46,55.5L43,57.5L39,57Z"/>
+    <path fill="#171717" d="M41,54.5L42.5,54.8L42,57.4L41,57.2Z"/>
+    <path fill="#FFFFFF" d="M61,55L72,53L69,58L64,59Z"/>
+    <path fill="#171717" d="M66,54.5L67.5,54.2L67,58.5L66,58.8Z"/>
+    <path fill="#171717" d="M50,64H58L54,68Z"/>
+    <path fill="#171717" d="M53.3,67H54.7V71L58,73L57,74L54,72L51,74L50,73L53.3,71Z"/>
+  </g>
+  <!-- Single-color cutout for Android themed icons, not painted over the artwork. -->
+  <g id="monochrome" display="none">
+    <path fill="#FFFFFF" fill-rule="evenodd" d="M33,29L47,39H61L75,29L78,55L74,69L64,78L57,82H51L44,78L34,69L30,55Z M36,36L43,42L36,47Z M72,36L65,42L72,47Z M36,53L47,55L44,59L39,58Z M61,55L72,53L69,58L64,59Z M50,64H58L54,68Z M53,70H55V72L58,74L57,75L54,73L51,75L50,74L53,72Z M47,42L54,53L61,42L54,56Z"/>
+  </g>
+</svg>

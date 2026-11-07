@@ -6,8 +6,8 @@ import `fun`.kirari.hanako.feature.settings.ui.automation.StaticVibrationSetting
 import `fun`.kirari.hanako.feature.settings.ui.debug.DebugLogScreen
 import `fun`.kirari.hanako.feature.home.ui.HanakoHomeScreen
 import `fun`.kirari.hanako.feature.home.ui.MainShellScreen
+import `fun`.kirari.hanako.feature.home.ui.MainTopBar
 import `fun`.kirari.hanako.feature.home.ui.Screen
-import `fun`.kirari.hanako.feature.home.ui.hanakoHomeColorScheme
 import `fun`.kirari.hanako.feature.settings.ui.model.ModelSelectionDialogState
 import `fun`.kirari.hanako.feature.settings.ui.model.ModelSelectionDialogs
 import `fun`.kirari.hanako.feature.settings.ui.model.ModelSettingsScreen
@@ -197,9 +197,10 @@ fun HanakoApp(viewModel: AppViewModel) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val homeVisible = (currentRoute == null || currentRoute == ROUTE_HOME_SHELL) &&
-        currentScreen == Screen.Hanako
-    val chromeColors = if (homeVisible) hanakoHomeColorScheme() else MaterialTheme.colorScheme
+    // Reserve identical chrome even before NavHost publishes its first entry.
+    // Otherwise the first frame resizes both pages as the bottom bar appears.
+    val mainShellVisible = currentRoute == null || currentRoute == ROUTE_HOME_SHELL
+    val chromeColors = MaterialTheme.colorScheme
     val topBarScrollToTopEnabled = scrollToTopController.canScrollToTop(currentRoute)
 
     LaunchedEffect(currentRoute) {
@@ -234,7 +235,12 @@ fun HanakoApp(viewModel: AppViewModel) {
             modifier = if (historyQuoteFocused) Modifier.blur(1.5.dp) else Modifier,
             topBar = {
                 MaterialTheme(colorScheme = chromeColors) {
-                    if (currentRoute != ROUTE_HOME_SHELL) CenterAlignedTopAppBar(
+                    if (mainShellVisible) {
+                        MainTopBar(
+                            updateAvailable = appUpdateState.availableUpdate != null,
+                            onShowUpdate = viewModel::showUpdateDialog
+                        )
+                    } else CenterAlignedTopAppBar(
                         modifier = Modifier
                             .then(if (topBarScrollToTopEnabled) {
                                 Modifier.clickable { scrollToTopController.scrollToTop(currentRoute) }
@@ -268,7 +274,7 @@ fun HanakoApp(viewModel: AppViewModel) {
             },
             bottomBar = {
                 AnimatedVisibility(
-                    visible = currentRoute == ROUTE_HOME_SHELL,
+                    visible = mainShellVisible,
                     enter = slideInVertically { it } + fadeIn(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
@@ -295,7 +301,7 @@ fun HanakoApp(viewModel: AppViewModel) {
                     startDestination = ROUTE_HOME_SHELL,
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(if (homeVisible) chromeColors.background else MaterialTheme.colorScheme.surface)
+                        .background(chromeColors.background)
                         .padding(padding),
                     enterTransition = {
                         slideInHorizontally { it } + fadeIn()
@@ -315,8 +321,6 @@ fun HanakoApp(viewModel: AppViewModel) {
                             pagerState = mainPagerState,
                             hanakoContent = {
                                 HanakoHomeScreen(
-                                    updateAvailable = appUpdateState.availableUpdate != null,
-                                    onShowUpdate = viewModel::showUpdateDialog,
                                     settings = settings,
                                     overlayEnabled = overlayEnabled,
                                     hasOverlayPermission = hasOverlayPermission,

@@ -6,10 +6,12 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import `fun`.kirari.hanako.core.debug.AppDebugLogStore
 import `fun`.kirari.hanako.core.model.migrateBase64ToFile
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapConcat
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -43,6 +45,9 @@ class SettingsStore(private val context: Context) {
                 flow { emit(appSettings) }
             }
         }
+        // This stream also decodes history and may migrate screenshot files.
+        // Keep that work off the UI collector during startup and page switches.
+        .flowOn(Dispatchers.IO)
 
     suspend fun update(transform: (AppSettings) -> AppSettings) {
         context.dataStore.edit { preferences ->

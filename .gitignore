@@ -26,3 +26,4 @@ keystore.properties
 !.env.example
 # 开发计划文档仅供本地协作，不需要同步
 docs/*.md
+/tools/__pycache__/
