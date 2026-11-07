@@ -5,7 +5,9 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.util.DisplayMetrics
@@ -13,9 +15,9 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.WindowInsets
 import android.view.WindowManager
-import android.view.animation.DecelerateInterpolator
 import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import androidx.lifecycle.LifecycleOwner
@@ -46,6 +48,7 @@ internal class BubbleWindowController(
     private fun cardDp(value: Int) = (value * density * floatingWindowSettings().sizeScale).roundToInt()
     private val backgroundAlpha get() = (floatingWindowSettings().backgroundOpacity * 255).roundToInt()
     private var root: FrameLayout? = null
+    private var content: FrameLayout? = null
     private var controls: DualBubbleView? = null
     private var params: WindowManager.LayoutParams? = null
     private var panel: View? = null
@@ -59,6 +62,10 @@ internal class BubbleWindowController(
     private var boundsAnimator: ValueAnimator? = null
     private var closing = false
     private var targetBounds: CardBounds? = null
+    private var visualBounds: CardBounds? = null
+    private var expansionFraction = 0f
+    private var captureExclusionApplied = false
+    private val clipRect = Rect()
     private var appliedAppearance: FloatingWindowSettings? = null
     val headerHeight: Int get() = controls?.desiredHeight ?: cardDp(60)
     private val cardBackground = GradientDrawable(
@@ -75,8 +82,8 @@ internal class BubbleWindowController(
         val appearance = floatingWindowSettings()
         val header = DualBubbleView(context, appearance.sizeScale, onSettingsTap, onCaptureTap,
             onDragStart = {
-                dragStartX = (params?.x ?: anchorX) + ((params?.width ?: 0) - (controls?.desiredWidth ?: 0)) / 2
-                dragStartY = params?.y ?: anchorY
+                dragStartX = visualBounds?.left ?: anchorX
+                dragStartY = visualBounds?.top ?: anchorY
             },
             onDrag = { dx, dy ->
                 anchorX = dragStartX + dx
@@ -100,10 +107,22 @@ internal class BubbleWindowController(
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(viewModelStoreOwner)
             setViewTreeSavedStateRegistryOwner(savedStateRegistryOwner)
+            clipChildren = false
+        }
+        val body = FrameLayout(context).apply {
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) {
+                    val bounds = visualBounds
+                    outline.setRoundRect(0, 0, bounds?.width ?: view.width,
+                        bounds?.height ?: view.height, cardDp(24).toFloat())
+                }
+            }
         }
         controls = header
         root = host
-        host.addView(header, FrameLayout.LayoutParams(header.desiredWidth, header.desiredHeight))
+        content = body
+        body.addView(header, FrameLayout.LayoutParams(header.desiredWidth, header.desiredHeight))
+        host.addView(body, FrameLayout.LayoutParams(header.desiredWidth, header.desiredHeight))
         params = WindowManager.LayoutParams(header.desiredWidth, header.desiredHeight, overlayWindowType(),
             windowFlags(expanded = false), PixelFormat.TRANSLUCENT).apply {
             gravity = Gravity.TOP or Gravity.LEFT
@@ -118,7 +137,7 @@ internal class BubbleWindowController(
     }
 
     fun showPanel(view: View, width: Int, height: Int, safeArea: CardBounds) {
-        val host = root ?: return
+        val host = content ?: return
         if (closing) {
             cancelBoundsAnimation()
             closing = false
@@ -129,74 +148,59 @@ internal class BubbleWindowController(
             (view.parent as? ViewGroup)?.removeView(view)
             panel = view
             host.addView(view)
+            view.alpha = 0f
         }
-        view.alpha = 1f
-        cardBackground.alpha = backgroundAlpha
         host.background = cardBackground
-        host.elevation = cardDp(8).toFloat()
+        updateExpansion(expansionFraction)
         host.clipToOutline = true
         panelWidth = width
         panelHeight = height
         panelArea = safeArea
-        controls?.setExpanded(true)
         layoutWindow(animate = true)
     }
 
     fun hidePanel(animate: Boolean = false, onHidden: () -> Unit = {}) {
-        val host = root
+        val host = content
         val header = controls
-        val layout = params
         val body = panel
         if (animate && closing) return
         cancelBoundsAnimation()
-        if (!animate || host == null || header == null || layout == null || body == null ||
-            host.visibility != View.VISIBLE || !host.isAttachedToWindow) {
+        if (!animate || host == null || header == null || body == null ||
+            root?.visibility != View.VISIBLE || !host.isAttachedToWindow) {
             finishHidingPanel()
             onHidden()
             return
         }
 
         closing = true
-        val from = CardBounds(layout.x, layout.y, layout.x + layout.width, layout.y + layout.height)
         val anchor = CardBounds(anchorX, anchorY, anchorX + header.desiredWidth, anchorY + header.desiredHeight)
         val target = placeUnifiedWindow(screenArea(), anchor, header.desiredWidth, header.desiredHeight)
-        // Leave the Compose body at its expanded size. Only the native window clips it;
-        // closing must not reflow Markdown at each narrower animation frame.
-        boundsAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 220L
-            interpolator = PathInterpolator(0.2f, 0f, 0f, 1f)
-            addUpdateListener {
-                val progress = it.animatedValue as Float
-                fun between(start: Int, end: Int) = (start + (end - start) * progress).roundToInt()
-                body.alpha = (1f - progress / .65f).coerceIn(0f, 1f)
-                cardBackground.alpha = (backgroundAlpha * (1f - progress)).roundToInt()
-                host.elevation = cardDp(8) * (1f - progress)
-                header.setCollapseProgress(progress)
-                applyBounds(CardBounds(between(from.left, target.left), between(from.top, target.top),
-                    between(from.right, target.right), between(from.bottom, target.bottom)))
-            }
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    boundsAnimator = null
-                    finishHidingPanel()
-                    onHidden()
-                }
-            })
-            start()
+        // Translation and clipping share one timeline. The Compose body retains its size,
+        // and WindowManager is updated only at the beginning and end of the entire motion.
+        animateBounds(target, expandedAtEnd = false, durationMs = 260L) {
+            finishHidingPanel(target)
+            onHidden()
         }
     }
 
-    private fun finishHidingPanel() {
+    private fun finishHidingPanel(settledBounds: CardBounds? = null) {
         closing = false
         panel?.alpha = 1f
-        panel?.let { root?.removeView(it) }
+        panel?.let { content?.removeView(it) }
         panel = null
         panelArea = null
-        root?.apply { background = null; elevation = 0f; clipToOutline = false }
+        content?.apply { background = null; elevation = 0f; clipToOutline = false }
         cardBackground.alpha = backgroundAlpha
         controls?.setExpanded(false)
+        expansionFraction = 0f
         targetBounds = null
-        layoutWindow(animate = false)
+        if (settledBounds == null) {
+            layoutWindow(animate = false)
+        } else {
+            // Keep the exact animation endpoint; do not run a second positioning pass.
+            params?.flags = windowFlags(expanded = false)
+            settleBounds(settledBounds, forceWindowUpdate = true)
+        }
     }
 
     fun update(state: OverlayUiState) {
@@ -212,19 +216,27 @@ internal class BubbleWindowController(
             }
         }
         controls?.update(state.working || state.capturing, state.settingsMenuVisible)
-        root?.visibility = if (state.capturing) View.INVISIBLE else View.VISIBLE
+        root?.visibility = if (state.capturing && (!captureExclusionApplied || !state.sheetVisible)) View.INVISIBLE else View.VISIBLE
     }
 
-    fun hideForCapture() { root?.visibility = View.INVISIBLE }
+    fun prepareForCapture(): Boolean {
+        val host = root ?: return false
+        // Reapply to the current surface, which may have been replaced after rotation.
+        captureExclusionApplied = AntiScreenshotHelper.excludeFromCapture(host)
+        host.visibility = if (captureExclusionApplied) View.VISIBLE else View.INVISIBLE
+        return captureExclusionApplied
+    }
 
     fun destroy() {
         cancelBoundsAnimation()
         closing = false
         root?.let { if (it.isAttachedToWindow) windowManager.removeViewImmediate(it) }
         root = null
+        content = null
         controls = null
         panel = null
         params = null
+        visualBounds = null
     }
 
     private fun layoutWindow(animate: Boolean) {
@@ -253,32 +265,104 @@ internal class BubbleWindowController(
         if (target == targetBounds && !flagsChanged) return
         targetBounds = target
         cancelBoundsAnimation()
-        if (animate && expanded && host.visibility == View.VISIBLE && layout.height != target.height) {
-            boundsAnimator = ValueAnimator.ofInt(layout.height, target.height).apply {
-                duration = 150L
-                interpolator = DecelerateInterpolator()
-                addUpdateListener {
-                    val frame = placeUnifiedWindow(area, anchor, target.width, it.animatedValue as Int)
-                    applyBounds(frame)
-                }
-                start()
-            }
+        if (animate && expanded && host.visibility == View.VISIBLE && visualBounds != null && visualBounds != target) {
+            animateBounds(target, expandedAtEnd = true,
+                durationMs = if (visualBounds?.width != target.width || expansionFraction < 1f) 280L else 150L)
         } else {
-            applyBounds(target)
+            panel?.alpha = 1f
+            updateExpansion(if (expanded) 1f else 0f)
+            settleBounds(target, forceWindowUpdate = flagsChanged)
         }
     }
 
-    private fun applyBounds(bounds: CardBounds) {
-        val host = root ?: return
-        val layout = params ?: return
-        controls?.let { header ->
-            val headerParams = header.layoutParams as FrameLayout.LayoutParams
-            if (headerParams.width != bounds.width || headerParams.height != header.desiredHeight) {
-                headerParams.width = bounds.width
-                headerParams.height = header.desiredHeight
-                header.layoutParams = headerParams
+    private fun animateBounds(
+        target: CardBounds,
+        expandedAtEnd: Boolean,
+        durationMs: Long,
+        onEnd: () -> Unit = {}
+    ) {
+        val from = visualBounds ?: target
+        val startExpansion = expansionFraction
+        val startBodyAlpha = panel?.alpha ?: 1f
+        val revealing = expandedAtEnd && (startExpansion < 1f || startBodyAlpha < 1f)
+        val endExpansion = if (expandedAtEnd) 1f else 0f
+        val motionBounds = motionWindowBounds(from, target)
+        // Reserve both endpoints once. Animation only changes local render properties.
+        sizeContent(maxOf(from.width, target.width), maxOf(from.height, target.height))
+        updateWindowBounds(motionBounds, force = true)
+        renderBounds(from)
+        boundsAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = durationMs
+            interpolator = PathInterpolator(0.22f, 0f, 0.18f, 1f)
+            addUpdateListener {
+                val progress = it.animatedValue as Float
+                val horizontal = if (revealing) (progress / .8f).coerceIn(0f, 1f) else progress
+                val vertical = if (revealing) ((progress - .08f) / .92f).coerceIn(0f, 1f) else progress
+                updateExpansion(startExpansion + (endExpansion - startExpansion) * horizontal)
+                panel?.alpha = when {
+                    !expandedAtEnd -> startBodyAlpha * (1f - progress / .55f).coerceIn(0f, 1f)
+                    revealing -> startBodyAlpha + (1f - startBodyAlpha) * ((progress - .18f) / .72f).coerceIn(0f, 1f)
+                    else -> 1f
+                }
+                renderBounds(interpolateWindowBounds(from, target, horizontal, vertical))
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    boundsAnimator = null
+                    updateExpansion(endExpansion)
+                    if (expandedAtEnd) panel?.alpha = 1f
+                    if (expandedAtEnd) settleBounds(target)
+                    onEnd()
+                }
+            })
+            start()
+        }
+    }
+
+    private fun updateExpansion(fraction: Float) {
+        expansionFraction = fraction.coerceIn(0f, 1f)
+        controls?.setExpansionProgress(expansionFraction)
+        cardBackground.alpha = (backgroundAlpha * expansionFraction).roundToInt()
+        content?.elevation = cardDp(8) * expansionFraction
+    }
+
+    private fun sizeContent(width: Int, height: Int) {
+        content?.let { body ->
+            if (body.layoutParams.width != width || body.layoutParams.height != height) {
+                body.layoutParams = FrameLayout.LayoutParams(width, height)
             }
         }
+        controls?.let { header ->
+            if (header.layoutParams.width != width || header.layoutParams.height != header.desiredHeight) {
+                header.layoutParams = FrameLayout.LayoutParams(width, header.desiredHeight)
+            }
+        }
+    }
+
+    private fun renderBounds(bounds: CardBounds) {
+        val layout = params ?: return
+        visualBounds = bounds
+        content?.apply {
+            translationX = (bounds.left - layout.x).toFloat()
+            translationY = (bounds.top - layout.y).toFloat()
+            clipRect.set(0, 0, bounds.width, bounds.height)
+            clipBounds = clipRect
+            invalidateOutline()
+        }
+        controls?.setVisualWidth(bounds.width)
+    }
+
+    private fun settleBounds(bounds: CardBounds, forceWindowUpdate: Boolean = false) {
+        updateWindowBounds(bounds, forceWindowUpdate)
+        sizeContent(bounds.width, bounds.height)
+        renderBounds(bounds)
+    }
+
+    private fun updateWindowBounds(bounds: CardBounds, force: Boolean = false) {
+        val host = root ?: return
+        val layout = params ?: return
+        if (!force && layout.x == bounds.left && layout.y == bounds.top &&
+            layout.width == bounds.width && layout.height == bounds.height) return
         layout.x = bounds.left
         layout.y = bounds.top
         layout.width = bounds.width

@@ -116,6 +116,10 @@ internal class PanelWindowController(
         clearPanelState()
     }
 
+    fun prepareForCapture(keepVisible: Boolean) {
+        if (keepVisible) hideKeyboard() else dismiss()
+    }
+
     private fun clearPanelState() {
         panelView = null
         closing = false

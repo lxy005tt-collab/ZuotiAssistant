@@ -5,16 +5,10 @@ import android.util.Log
 import android.view.SurfaceControl
 import android.view.View
 import org.lsposed.hiddenapibypass.HiddenApiBypass
-import java.lang.ref.WeakReference
 
 internal object AntiScreenshotHelper {
     private const val TAG = "AntiScreenshot"
     private var initialized = false
-
-    @Volatile
-    var enabled: Boolean = false
-
-    private val trackedViews = mutableListOf<WeakReference<View>>()
 
     fun initialize() {
         if (initialized) return
@@ -35,49 +29,45 @@ internal object AntiScreenshotHelper {
      * 通过反射获取 [ViewRootImpl.getSurfaceControl] 并调用
      * [SurfaceControl.Transaction.setSkipScreenshot]。
      *
-     * 仅在 Android 12 (API 31) 及以上版本生效，且 [enabled] 为 true 时执行。
+     * 仅对本应用的悬浮窗设置，不改变被截图应用的任何窗口属性。
      */
     fun applyTo(view: View) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-        trackedViews.add(WeakReference(view))
-        view.post { attemptApply(view) }
+        view.post { excludeFromCapture(view) }
     }
 
     /**
-     * 当 [enabled] 从 false 变为 true 时调用，
-     * 对已注册的所有视图重新尝试应用防截屏保护。
+     * Skip our layer (and its children) rather than marking it SECURE, which would
+     * leave a blank region. Hidden APIs vary across ROMs; failure must fall back to
+     * briefly hiding the window before capture. A successful call is not a device
+     * compatibility guarantee: the result is still checked on the actual device.
      */
-    fun refreshAll() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-        trackedViews.removeAll { it.get() == null }
-        trackedViews.forEach { ref ->
-            val view = ref.get() ?: return@forEach
-            view.post { attemptApply(view) }
-        }
-    }
-
-    private fun attemptApply(view: View) {
-        if (!enabled) return
-        runCatching {
+    fun excludeFromCapture(view: View): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !view.isAttachedToWindow) return false
+        initialize()
+        return runCatching {
             val getVri = View::class.java.getDeclaredMethod("getViewRootImpl")
             getVri.isAccessible = true
-            val vri = getVri.invoke(view) ?: return
+            val vri = getVri.invoke(view) ?: return false
 
             val getSc = vri.javaClass.getMethod("getSurfaceControl")
-            val sc = getSc.invoke(vri) as? SurfaceControl ?: return
+            val sc = getSc.invoke(vri) as? SurfaceControl ?: return false
+            if (!sc.isValid) return false
 
             val txClass = Class.forName("android.view.SurfaceControl\$Transaction")
-            val tx = txClass.getDeclaredConstructor().newInstance()
             val setSkipMethod = txClass.getMethod(
                 "setSkipScreenshot",
                 SurfaceControl::class.java,
                 java.lang.Boolean.TYPE
             )
-            setSkipMethod.invoke(tx, sc, true)
-            val applyMethod = txClass.getMethod("apply")
-            applyMethod.invoke(tx)
+            SurfaceControl.Transaction().use { transaction ->
+                setSkipMethod.invoke(transaction, sc, true)
+                transaction.apply()
+            }
+            Log.d(TAG, "Own overlay layer excluded from screen capture")
+            true
         }.onFailure {
-            Log.w(TAG, "Failed to apply anti-screenshot", it)
-        }
+            Log.w(TAG, "Layer exclusion unavailable; using temporary hide", it)
+        }.getOrDefault(false)
     }
 }

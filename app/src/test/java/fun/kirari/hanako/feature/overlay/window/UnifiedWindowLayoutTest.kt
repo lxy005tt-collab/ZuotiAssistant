@@ -8,6 +8,33 @@ class UnifiedWindowLayoutTest {
     private val screen = CardBounds(8, 32, 352, 768)
 
     @Test
+    fun opening_movesTheRightEdgeWhileKeepingTheLeftControlAnchored() {
+        val anchor = CardBounds(24, 200, 111, 245)
+        val expanded = placeUnifiedWindow(screen, anchor, 210, 160)
+        assertEquals(anchor.left, expanded.left)
+        assertEquals(anchor.top, expanded.top)
+        assertTrue(expanded.right > anchor.right)
+    }
+
+    @Test
+    fun collapsingNearBottomRight_movesAndShrinksDuringTheSameFrame() {
+        val anchor = CardBounds(260, 700, 347, 745)
+        val expanded = placeUnifiedWindow(screen, anchor, 210, 315)
+        val middle = interpolateWindowBounds(expanded, anchor, .5f)
+        assertTrue(middle.left > expanded.left && middle.left < anchor.left)
+        assertTrue(middle.top > expanded.top && middle.top < anchor.top)
+        assertTrue(middle.width < expanded.width && middle.width > anchor.width)
+        assertTrue(middle.height < expanded.height && middle.height > anchor.height)
+        assertEquals(anchor, interpolateWindowBounds(expanded, anchor, 1f))
+        val host = motionWindowBounds(expanded, anchor)
+        for (step in 0..20) {
+            val frame = interpolateWindowBounds(expanded, anchor, step / 20f)
+            assertTrue(frame.left >= host.left && frame.right <= host.right)
+            assertTrue(frame.top >= host.top && frame.bottom <= host.bottom)
+        }
+    }
+
+    @Test
     fun growingCard_preservesItsTopUntilItNeedsBottomClearance() {
         val anchor = CardBounds(120, 200, 236, 260)
         val small = placeUnifiedWindow(screen, anchor, 280, 100)

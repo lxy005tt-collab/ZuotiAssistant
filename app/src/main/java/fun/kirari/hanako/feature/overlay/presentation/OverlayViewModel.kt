@@ -165,19 +165,20 @@ internal class OverlayViewModel(
         }
     }
 
-    fun captureAndSolveFullScreen() {
+    fun captureAndSolveFullScreen(keepOverlayVisible: Boolean = false) {
         if (_uiState.value.working || _uiState.value.capturing) return
         _uiState.update {
-            it.copy(capturing = true, settingsMenuVisible = false, sheetVisible = false,
+            it.copy(capturing = true, settingsMenuVisible = false, sheetVisible = keepOverlayVisible,
+                sheetMode = OverlaySheetMode.RESULT, result = null, screenshot = null, selectedBitmap = null,
+                liveAnswerText = "", liveOcrText = "", followUpDraft = "", sendingFollowUp = false,
                 error = null, launchMode = CaptureLaunchMode.NORMAL, autoRunState = AutoRunState.IDLE)
         }
+        AppDebugLogStore.i(tag, "capture full screen method=${_uiState.value.settings.screenCaptureMethod} visibleOverlay=$keepOverlayVisible")
         viewModelScope.launch {
             try {
-                // Let the hidden overlay disappear from the compositor before reading a frame.
-                delay(64L)
                 val bitmap = withContext(Dispatchers.IO) {
                     `fun`.kirari.hanako.platform.capture.ScreenCaptureManager.captureLatestBitmap(
-                        appContext, _uiState.value.settings.screenCaptureMethod)
+                        appContext, _uiState.value.settings.screenCaptureMethod, afterOverlayChange = true)
                 }
                 _uiState.update { it.copy(capturing = false, screenshot = bitmap) }
                 answerController.process(bitmap)

@@ -61,6 +61,8 @@ internal class DualBubbleView(
     private var processing = false
     private var expanded = false
     private var expansionFraction = 0f
+    private var visualWidth: Int? = null
+    private val drawingWidth get() = visualWidth ?: width.takeIf { it > 0 } ?: desiredWidth
     private var settingsAngle = 0f
     private var settingsOpen = false
     private var settingsAnimator: ValueAnimator? = null
@@ -104,7 +106,7 @@ internal class DualBubbleView(
         if (expanded == value && expansionFraction == fraction) return
         expanded = value
         expansionFraction = fraction
-        rebuildGeometry(width.takeIf { it > 0 } ?: desiredWidth)
+        rebuildGeometry(drawingWidth)
         invalidate()
     }
 
@@ -120,20 +122,30 @@ internal class DualBubbleView(
             captureTarget.layoutParams = LayoutParams(diameter, diameter).apply {
                 gravity = Gravity.TOP or Gravity.RIGHT; rightMargin = inset; topMargin = inset
             }
-            rebuildGeometry(width.takeIf { it > 0 } ?: desiredWidth)
+            rebuildGeometry(drawingWidth)
         }
         invalidate()
         return resized
     }
 
-    fun setCollapseProgress(progress: Float) {
-        expansionFraction = 1f - progress.coerceIn(0f, 1f)
+    fun setExpansionProgress(progress: Float) {
+        expansionFraction = progress.coerceIn(0f, 1f)
+        invalidate()
+    }
+
+    /** Move the right control without remeasuring the window or the Compose answer. */
+    fun setVisualWidth(value: Int) {
+        if (visualWidth == value) return
+        visualWidth = value
+        captureTarget.translationX = (value - width).toFloat()
+        rebuildGeometry(value)
         invalidate()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        rebuildGeometry(w)
+        captureTarget.translationX = (drawingWidth - w).toFloat()
+        rebuildGeometry(drawingWidth)
     }
 
     private fun rebuildGeometry(viewWidth: Int) {
@@ -211,8 +223,8 @@ internal class DualBubbleView(
         }
         if (expansionFraction > 0f) {
             paint.color = Color.argb((58 * expansionFraction).roundToInt(), 47, 69, 96)
-            canvas.drawRoundRect(width / 2f - 9 * density, desiredHeight / 2f - 1.5f * density,
-                width / 2f + 9 * density, desiredHeight / 2f + 1.5f * density, 2 * density, 2 * density, paint)
+            canvas.drawRoundRect(drawingWidth / 2f - 9 * density, desiredHeight / 2f - 1.5f * density,
+                drawingWidth / 2f + 9 * density, desiredHeight / 2f + 1.5f * density, 2 * density, 2 * density, paint)
         }
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 1.2f * density

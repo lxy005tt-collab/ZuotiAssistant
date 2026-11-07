@@ -154,6 +154,11 @@ object ProjectionSessionManager {
         return mediaProjection != null && imageReader != null && virtualDisplay != null
     }
 
+    fun discardPendingFrames() {
+        val reader = imageReader ?: error("屏幕捕捉会话未初始化")
+        reader.acquireLatestImage()?.close()
+    }
+
     fun captureLatestBitmap(): Bitmap {
         val reader = imageReader ?: error("屏幕捕捉会话未初始化")
         val image = waitForImage(reader) ?: error("未获取到屏幕内容")

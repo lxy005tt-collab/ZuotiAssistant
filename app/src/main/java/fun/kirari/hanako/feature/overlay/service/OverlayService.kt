@@ -24,14 +24,10 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import `fun`.kirari.hanako.platform.capture.projection.ProjectionPermissionActivity
 import `fun`.kirari.hanako.core.debug.AppDebugLogStore
-import `fun`.kirari.hanako.feature.overlay.window.AntiScreenshotHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 
 class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
     private val logTag = "HanakoOverlaySvc"
@@ -118,7 +114,6 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             createNotificationChannel()
             startForeground(NOTIFICATION_ID, buildNotification(dependencies.mainActivityIntent(this)))
             bubbleController.show()
-            observeSkipScreenshotSetting()
             stateObserver?.start()
             automationEffectObserver?.start()
         }.onFailure {
@@ -162,31 +157,15 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun toggleRotatingSettings() {
+        if (overlayViewModel.uiState.value.capturing) return
         overlayViewModel.toggleFloatingSettings()
     }
 
     private fun captureAndSolve() {
         if (overlayViewModel.uiState.value.working || overlayViewModel.uiState.value.capturing) return
-        panelWindowController?.dismiss()
-        bubbleWindowController?.hideForCapture()
-        overlayViewModel.captureAndSolveFullScreen()
-    }
-
-    private fun observeSkipScreenshotSetting() {
-        serviceScope.launch {
-            var wasEnabled = false
-            overlayViewModel.uiState
-                .map { it.settings.automation.skipScreenshotEnabled }
-                .distinctUntilChanged()
-                .collect { skipScreenshot ->
-                    val changedToEnabled = skipScreenshot && !wasEnabled
-                    AntiScreenshotHelper.enabled = skipScreenshot
-                    if (changedToEnabled) {
-                        AntiScreenshotHelper.refreshAll()
-                    }
-                    wasEnabled = skipScreenshot
-                }
-        }
+        val keepVisible = bubbleWindowController?.prepareForCapture() == true
+        panelWindowController?.prepareForCapture(keepVisible)
+        overlayViewModel.captureAndSolveFullScreen(keepOverlayVisible = keepVisible)
     }
 
     companion object {

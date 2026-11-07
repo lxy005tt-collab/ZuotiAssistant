@@ -124,6 +124,7 @@ internal fun ResultOverlaySheet(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 when {
+                    uiState.capturing -> Text("正在截图…", style = MaterialTheme.typography.bodyMedium)
                     answer.isNotBlank() -> MarkdownLatexText(revealed, Modifier.fillMaxWidth())
                     uiState.working -> Text("正在思考…", style = MaterialTheme.typography.bodyMedium)
                     uiState.error == null -> Text("暂无答案", style = MaterialTheme.typography.bodyMedium)

@@ -13,6 +13,7 @@ import `fun`.kirari.hanako.platform.capture.shizuku.ShizukuPermissionActivity
 import `fun`.kirari.hanako.platform.capture.shizuku.ShizukuShellScreencap
 import `fun`.kirari.hanako.platform.capture.shizuku.ShizukuUserServiceClient
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.delay
 import rikka.shizuku.Shizuku
 
 internal sealed interface ScreenCaptureStartResult {
@@ -48,8 +49,17 @@ internal object ScreenCaptureManager {
 
     suspend fun captureLatestBitmap(
         context: Context,
-        method: ScreenCaptureMethod
-    ): Bitmap = backend(method).captureLatestBitmap(context)
+        method: ScreenCaptureMethod,
+        afterOverlayChange: Boolean = false
+    ): Bitmap {
+        if (afterOverlayChange) {
+            // ImageReader can hold old frames and stall its producer between captures.
+            // Drain them first, then allow the exclusion/hide transaction to reach a new frame.
+            if (method == ScreenCaptureMethod.MEDIA_PROJECTION) ProjectionSessionManager.discardPendingFrames()
+            delay(64L)
+        }
+        return backend(method).captureLatestBitmap(context)
+    }
 
     fun stop(context: Context, method: ScreenCaptureMethod) {
         backend(method).stop(context)
