@@ -23,6 +23,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import `fun`.kirari.hanako.core.ui.theme.HanakoTheme
 import `fun`.kirari.hanako.feature.overlay.presentation.OverlayViewModel
 import `fun`.kirari.hanako.feature.overlay.state.OverlaySheetMode
+import `fun`.kirari.hanako.feature.overlay.state.hasAnswerBubbleContent
 import `fun`.kirari.hanako.feature.overlay.ui.OverlayPanel
 import kotlin.math.roundToInt
 
@@ -83,6 +84,7 @@ internal class PanelWindowController(
         val safeArea = CardBounds(left, top, right.coerceAtLeast(left + 1), bottom.coerceAtLeast(top + 1))
         val state = viewModel.uiState.value
         val compact = mode == OverlaySheetMode.RESULT || state.settingsMenuVisible
+        val showBody = mode != OverlaySheetMode.RESULT || state.settingsMenuVisible || state.hasAnswerBubbleContent()
         val expanded = !compact && state.cardExpanded
         val desiredHeight = when {
             state.settingsMenuVisible -> contentHeight.takeIf { it > 0 } ?: cardDp(80)
@@ -97,7 +99,8 @@ internal class PanelWindowController(
         floatingWindow.showPanel(root,
             width = cardDp(if (compact) 280 else if (expanded) 384 else 320),
             height = desiredHeight.coerceIn(1, maxHeight.coerceAtLeast(1)),
-            safeArea = safeArea)
+            safeArea = safeArea,
+            showBody = showBody)
     }
 
     fun hideWithAnimation() {

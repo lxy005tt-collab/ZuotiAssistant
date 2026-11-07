@@ -344,12 +344,12 @@ fun HanakoApp(viewModel: AppViewModel) {
                                             ScreenCaptureManager.stop(context, settings.screenCaptureMethod)
                                             viewModel.setScreenCaptureMethod(method)
                                         }
-                                    },
-                                    onOpenHistory = { navController.navigate(ROUTE_HANAKO_HISTORY) }
+                                    }
                                 )
                             },
                             settingsContent = {
                                 SettingsMenuScreen(
+                                    onNavigateHistory = { navController.navigate(ROUTE_HANAKO_HISTORY) },
                                     onNavigateProvider = { navController.navigate(ROUTE_SETTINGS_PROVIDER) },
                                     onNavigateModel = { navController.navigate(ROUTE_SETTINGS_MODEL) },
                                     onNavigateWebSearch = { navController.navigate(ROUTE_SETTINGS_WEB_SEARCH) },

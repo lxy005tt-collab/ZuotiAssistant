@@ -43,12 +43,12 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import `fun`.kirari.hanako.core.model.latestAnswerText
 import `fun`.kirari.hanako.core.model.currentAssistantText
 import `fun`.kirari.hanako.R
 import `fun`.kirari.hanako.core.ui.richtext.MarkdownLatexText
 import `fun`.kirari.hanako.core.ui.richtext.unwrapCopyMarkers
 import `fun`.kirari.hanako.feature.overlay.state.OverlayUiState
+import `fun`.kirari.hanako.feature.overlay.state.currentAnswerText
 import `fun`.kirari.hanako.platform.clipboard.copyToClipboardWithToast
 
 @Composable
@@ -78,12 +78,7 @@ internal fun ResultOverlaySheet(
             onSendFollowUp()
         }
     }
-    val answer = if (uiState.working && !uiState.sendingFollowUp) {
-        uiState.liveAnswerText
-    } else {
-        uiState.result?.latestAnswerText().orEmpty()
-            .ifBlank { uiState.result?.automationAction?.text.orEmpty() }
-    }
+    val answer = uiState.currentAnswerText()
     val revealed = rememberStreamingReveal(answer, streamedAnswer && uiState.settings.floatingWindow.typewriterEnabled)
     val lastFollowUp = uiState.result?.followUpTurns?.lastOrNull()
     val followUpAnswer = lastFollowUp?.pendingAssistantText.orEmpty()
@@ -123,21 +118,14 @@ internal fun ResultOverlaySheet(
                     .padding(start = 10.5.dp, end = 10.5.dp, top = 9.dp, bottom = 2.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                when {
-                    uiState.capturing -> Text("正在截图…", style = MaterialTheme.typography.bodyMedium)
-                    answer.isNotBlank() -> MarkdownLatexText(revealed, Modifier.fillMaxWidth())
-                    uiState.working -> Text("正在思考…", style = MaterialTheme.typography.bodyMedium)
-                    uiState.error == null -> Text("暂无答案", style = MaterialTheme.typography.bodyMedium)
-                }
-                uiState.result?.followUpTurns?.forEachIndexed { index, turn ->
+                if (answer.isNotBlank()) MarkdownLatexText(revealed, Modifier.fillMaxWidth())
+                uiState.result?.followUpTurns?.forEach { turn ->
                     key(turn.id) {
                         Text("追问：${turn.userText}", style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f))
                         val text = turn.pendingAssistantText.ifBlank { turn.currentAssistantText() }
-                        val sending = uiState.sendingFollowUp && index == uiState.result.followUpTurns.lastIndex
                         val reply = if (turn.id == lastFollowUp?.id) revealedReply else text
-                        if (sending && text.isBlank()) Text("正在思考…")
-                        else if (text.isNotBlank()) MarkdownLatexText(reply, Modifier.fillMaxWidth())
+                        if (text.isNotBlank()) MarkdownLatexText(reply, Modifier.fillMaxWidth())
                         turn.errorMessage?.takeIf { it != uiState.error }?.let {
                             Text(it, color = MaterialTheme.colorScheme.error)
                         }

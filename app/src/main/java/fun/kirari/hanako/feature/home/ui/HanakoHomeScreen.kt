@@ -1,33 +1,17 @@
 package `fun`.kirari.hanako.feature.home.ui
 
 import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import `fun`.kirari.hanako.platform.capture.ScreenCaptureManager
 import `fun`.kirari.hanako.platform.capture.ScreenCaptureStartResult
@@ -45,8 +29,7 @@ internal fun HanakoHomeScreen(
     onOpenOverlayPermission: () -> Unit,
     onToggleOverlay: (Boolean) -> Unit,
     onSelectRoute: (ProcessingRoute) -> Unit,
-    onSelectCaptureMethod: (ScreenCaptureMethod) -> Unit,
-    onOpenHistory: () -> Unit
+    onSelectCaptureMethod: (ScreenCaptureMethod) -> Unit
 ) {
     HanakoHomeTheme {
         val context = LocalContext.current
@@ -86,53 +69,7 @@ internal fun HanakoHomeScreen(
                     }
                 )
             }
-            item {
-                HistoryEntryCard(onOpenHistory = onOpenHistory)
-            }
             item { Spacer(modifier = Modifier.height(80.dp)) }
-        }
-    }
-}
-
-@Composable
-private fun HistoryEntryCard(onOpenHistory: () -> Unit) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpenHistory),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(
-                Icons.Default.History,
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "历史记录",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    "查看悬浮窗处理过的历史记录",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.outline
-            )
         }
     }
 }

@@ -16,6 +16,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.view.ViewTreeObserver
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.animation.PathInterpolator
@@ -52,6 +53,7 @@ internal class BubbleWindowController(
     private var controls: DualBubbleView? = null
     private var params: WindowManager.LayoutParams? = null
     private var panel: View? = null
+    private var panelBodyVisible = true
     private var panelWidth = 0
     private var panelHeight = 0
     private var panelArea: CardBounds? = null
@@ -66,6 +68,11 @@ internal class BubbleWindowController(
     private var expansionFraction = 0f
     private var captureExclusionApplied = false
     private val clipRect = Rect()
+    private val actualWindowLocation = IntArray(2)
+    private val positionBeforeDraw = ViewTreeObserver.OnPreDrawListener {
+        visualBounds?.let(::positionContentOnScreen)
+        true
+    }
     private var appliedAppearance: FloatingWindowSettings? = null
     val headerHeight: Int get() = controls?.desiredHeight ?: cardDp(60)
     private val cardBackground = GradientDrawable(
@@ -74,7 +81,6 @@ internal class BubbleWindowController(
     ).apply {
         cornerRadius = cardDp(24).toFloat()
         alpha = backgroundAlpha
-        setStroke(dp(1), Color.argb(36, 70, 101, 139))
     }
 
     fun show() {
@@ -132,11 +138,12 @@ internal class BubbleWindowController(
             if (Build.VERSION.SDK_INT >= 30) setFitInsetsTypes(0)
         }
         windowManager.addView(host, params)
+        host.viewTreeObserver.addOnPreDrawListener(positionBeforeDraw)
         AntiScreenshotHelper.applyTo(host)
         layoutWindow(animate = false)
     }
 
-    fun showPanel(view: View, width: Int, height: Int, safeArea: CardBounds) {
+    fun showPanel(view: View, width: Int, height: Int, safeArea: CardBounds, showBody: Boolean = true) {
         val host = content ?: return
         if (closing) {
             cancelBoundsAnimation()
@@ -150,9 +157,12 @@ internal class BubbleWindowController(
             host.addView(view)
             view.alpha = 0f
         }
-        host.background = cardBackground
+        if (showBody && !panelBodyVisible) view.alpha = 0f
+        panelBodyVisible = showBody
+        view.visibility = if (showBody) View.VISIBLE else View.INVISIBLE
+        host.background = if (showBody) cardBackground else null
         updateExpansion(expansionFraction)
-        host.clipToOutline = true
+        host.clipToOutline = showBody
         panelWidth = width
         panelHeight = height
         panelArea = safeArea
@@ -188,6 +198,7 @@ internal class BubbleWindowController(
         panel?.alpha = 1f
         panel?.let { content?.removeView(it) }
         panel = null
+        panelBodyVisible = true
         panelArea = null
         content?.apply { background = null; elevation = 0f; clipToOutline = false }
         cardBackground.alpha = backgroundAlpha
@@ -230,7 +241,10 @@ internal class BubbleWindowController(
     fun destroy() {
         cancelBoundsAnimation()
         closing = false
-        root?.let { if (it.isAttachedToWindow) windowManager.removeViewImmediate(it) }
+        root?.let {
+            if (it.viewTreeObserver.isAlive) it.viewTreeObserver.removeOnPreDrawListener(positionBeforeDraw)
+            if (it.isAttachedToWindow) windowManager.removeViewImmediate(it)
+        }
         root = null
         content = null
         controls = null
@@ -248,7 +262,7 @@ internal class BubbleWindowController(
         val area = panelArea ?: screenArea()
         val anchor = CardBounds(anchorX, anchorY, anchorX + header.desiredWidth, anchorY + header.desiredHeight)
         val width = if (expanded) panelWidth else header.desiredWidth
-        val height = header.desiredHeight + if (expanded) panelHeight + cardDp(8) else 0
+        val height = header.desiredHeight + if (expanded && panelBodyVisible) panelHeight + cardDp(8) else 0
         val target = placeUnifiedWindow(area, anchor, width, height)
         // Keep the child at its final size while the parent reveals it. This avoids text reflow
         // and prevents the appearing action row from squeezing the answer during growth.
@@ -270,7 +284,7 @@ internal class BubbleWindowController(
                 durationMs = if (visualBounds?.width != target.width || expansionFraction < 1f) 280L else 150L)
         } else {
             panel?.alpha = 1f
-            updateExpansion(if (expanded) 1f else 0f)
+            updateExpansion(if (expanded && panelBodyVisible) 1f else 0f)
             settleBounds(target, forceWindowUpdate = flagsChanged)
         }
     }
@@ -285,7 +299,7 @@ internal class BubbleWindowController(
         val startExpansion = expansionFraction
         val startBodyAlpha = panel?.alpha ?: 1f
         val revealing = expandedAtEnd && (startExpansion < 1f || startBodyAlpha < 1f)
-        val endExpansion = if (expandedAtEnd) 1f else 0f
+        val endExpansion = if (expandedAtEnd && panelBodyVisible) 1f else 0f
         val motionBounds = motionWindowBounds(from, target)
         // Reserve both endpoints once. Animation only changes local render properties.
         sizeContent(maxOf(from.width, target.width), maxOf(from.height, target.height))
@@ -323,7 +337,6 @@ internal class BubbleWindowController(
         expansionFraction = fraction.coerceIn(0f, 1f)
         controls?.setExpansionProgress(expansionFraction)
         cardBackground.alpha = (backgroundAlpha * expansionFraction).roundToInt()
-        content?.elevation = cardDp(8) * expansionFraction
     }
 
     private fun sizeContent(width: Int, height: Int) {
@@ -340,16 +353,29 @@ internal class BubbleWindowController(
     }
 
     private fun renderBounds(bounds: CardBounds) {
-        val layout = params ?: return
         visualBounds = bounds
+        positionContentOnScreen(bounds)
         content?.apply {
-            translationX = (bounds.left - layout.x).toFloat()
-            translationY = (bounds.top - layout.y).toFloat()
             clipRect.set(0, 0, bounds.width, bounds.height)
             clipBounds = clipRect
             invalidateOutline()
         }
         controls?.setVisualWidth(bounds.width)
+    }
+
+    private fun positionContentOnScreen(bounds: CardBounds) {
+        val host = root ?: return
+        val layout = params ?: return
+        if (host.isLaidOut) host.getLocationOnScreen(actualWindowLocation)
+        else {
+            actualWindowLocation[0] = layout.x
+            actualWindowLocation[1] = layout.y
+        }
+        // WindowManager relocation is asynchronous. Rebase against its actual frame
+        // immediately before drawing, not the requested coordinates, so the last
+        // animation frame and the compact window occupy exactly the same screen pixels.
+        content?.translationX = (bounds.left - actualWindowLocation[0]).toFloat()
+        content?.translationY = (bounds.top - actualWindowLocation[1]).toFloat()
     }
 
     private fun settleBounds(bounds: CardBounds, forceWindowUpdate: Boolean = false) {
