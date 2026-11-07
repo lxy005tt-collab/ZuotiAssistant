@@ -31,6 +31,8 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
@@ -46,6 +48,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -67,6 +70,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -92,6 +97,8 @@ import `fun`.kirari.hanako.core.debug.AppDebugLogStore
 import `fun`.kirari.hanako.core.data.availableProviders
 import `fun`.kirari.hanako.platform.capture.CaptureLaunchMode
 import `fun`.kirari.hanako.feature.overlay.state.OverlayRuntimeState
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import `fun`.kirari.hanako.feature.overlay.service.OverlayService
 import `fun`.kirari.hanako.feature.history.ui.HistoryDetailScreen
 import `fun`.kirari.hanako.feature.history.ui.HistorySubScreen
@@ -169,7 +176,24 @@ fun HanakoApp(viewModel: AppViewModel) {
         }
     }
 
-    var currentScreen by rememberSaveable { mutableStateOf(Screen.Hanako) }
+    val mainPagerState = rememberPagerState(pageCount = { Screen.entries.size })
+    val pageScope = rememberCoroutineScope()
+    var pageSwitchJob by remember { mutableStateOf<Job?>(null) }
+    // The pager is the single source of truth for taps, swipes and back navigation.
+    // A reverse tap interrupts the existing scroll from its current offset instead
+    // of a second selected-page effect snapping it back mid-animation.
+    val currentScreen by remember(mainPagerState) {
+        derivedStateOf { Screen.entries[mainPagerState.targetPage] }
+    }
+    fun selectScreen(screen: Screen) {
+        // Also cancel a request still waiting for the first layout/frame, even
+        // when the reverse target is the page currently nearest the snap point.
+        pageSwitchJob?.cancel()
+        pageSwitchJob = pageScope.launch {
+            mainPagerState.animateScrollToPage(screen.ordinal,
+                animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing))
+        }
+    }
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -198,7 +222,7 @@ fun HanakoApp(viewModel: AppViewModel) {
     }
 
     BackHandler(enabled = currentRoute == ROUTE_HOME_SHELL && currentScreen == Screen.Settings) {
-        currentScreen = Screen.Hanako
+        selectScreen(Screen.Hanako)
     }
 
     Box(
@@ -253,7 +277,7 @@ fun HanakoApp(viewModel: AppViewModel) {
                             Screen.entries.forEach { screen ->
                                 NavigationBarItem(
                                     selected = currentScreen == screen,
-                                    onClick = { currentScreen = screen },
+                                    onClick = { selectScreen(screen) },
                                     icon = { Icon(screen.icon, contentDescription = screen.title) },
                                     label = { Text(screen.title) }
                                 )
@@ -288,8 +312,7 @@ fun HanakoApp(viewModel: AppViewModel) {
                 ) {
                     composable(ROUTE_HOME_SHELL) {
                         MainShellScreen(
-                            currentScreen = currentScreen,
-                            onScreenChange = { currentScreen = it },
+                            pagerState = mainPagerState,
                             hanakoContent = {
                                 HanakoHomeScreen(
                                     updateAvailable = appUpdateState.availableUpdate != null,
