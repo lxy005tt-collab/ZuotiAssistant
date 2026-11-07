@@ -16,7 +16,7 @@ class BubbleMenuRegistryTest {
         assertEquals(
             listOf(
                 BubbleMenuItem.ShowAnswer,
-                BubbleMenuItem.ToggleRoute,
+                BubbleMenuItem.SelectRegion,
                 BubbleMenuItem.ToggleSearch,
                 BubbleMenuItem.Settings
             ),
@@ -25,11 +25,13 @@ class BubbleMenuRegistryTest {
     }
 
     @Test
-    fun toggleRouteEntry_reflectsCurrentProcessingRoute() {
-        val entry = BubbleMenuRegistry.entries.first { it.item == BubbleMenuItem.ToggleRoute }
-
-        assertFalse(entry.isChecked(AppSettings(processingRoute = ProcessingRoute.OCR_THEN_LLM)))
-        assertTrue(entry.isChecked(AppSettings(processingRoute = ProcessingRoute.MULTIMODAL_DIRECT)))
+    fun regionEntry_isAnActionInBothProcessingModes() {
+        val entry = BubbleMenuRegistry.entries.first { it.item == BubbleMenuItem.SelectRegion }
+        for (route in ProcessingRoute.entries) {
+            val settings = AppSettings(processingRoute = route)
+            assertTrue(entry.isEnabled(settings))
+            assertFalse(entry.isChecked(settings))
+        }
     }
 
     @Test

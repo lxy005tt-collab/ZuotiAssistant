@@ -4,6 +4,7 @@ import `fun`.kirari.hanako.feature.overlay.state.AutoRunState
 import `fun`.kirari.hanako.platform.capture.CaptureLaunchMode
 import `fun`.kirari.hanako.feature.overlay.state.OverlaySheetMode
 import `fun`.kirari.hanako.feature.overlay.state.OverlayUiState
+import `fun`.kirari.hanako.feature.overlay.state.isSelectingRegion
 
 import android.content.Context
 import android.content.Intent
@@ -85,7 +86,7 @@ internal class OverlayViewModel(
         },
         enterMultiPageCaptureMode = ::enterMultiPageCaptureMode,
         isBubbleMenuEnabled = { _uiState.value.settings.automation.bubbleMenuEnabled },
-        toggleProcessingRoute = ::toggleProcessingRoute,
+        selectRegion = ::captureNewQuestion,
         toggleWebSearch = ::toggleWebSearch,
         openSettings = {
             appContext.startActivity(
@@ -195,26 +196,21 @@ internal class OverlayViewModel(
 
     fun captureNewQuestion() {
         if (_uiState.value.working || _uiState.value.capturing) return
+        _uiState.update {
+            it.copy(sheetVisible = false, settingsMenuVisible = false, capturing = true,
+                error = null, launchMode = CaptureLaunchMode.NORMAL, autoRunState = AutoRunState.IDLE)
+        }
         viewModelScope.launch {
-            val wasVisible = _uiState.value.sheetVisible
-            _uiState.update { it.copy(sheetVisible = false, capturing = true) }
-            // Wait until the old panel and keyboard have left the captured screen.
-            delay(if (wasVisible) SheetAnimationDurationMs.toLong() + 180L else 120L)
-            runCatching {
-                `fun`.kirari.hanako.platform.capture.ScreenCaptureManager.captureLatestBitmap(appContext, _uiState.value.settings.screenCaptureMethod)
-            }.onSuccess { bitmap ->
-                AppDebugLogStore.i(tag, "openCropSheet capture success width=${bitmap.width} height=${bitmap.height}")
+            try {
+                val bitmap = withContext(Dispatchers.IO) {
+                    `fun`.kirari.hanako.platform.capture.ScreenCaptureManager.captureLatestBitmap(
+                        appContext, _uiState.value.settings.screenCaptureMethod, afterOverlayChange = true)
+                }
+                AppDebugLogStore.i(tag, "region capture success width=${bitmap.width} height=${bitmap.height}")
                 _uiState.update {
                     it.copy(
                         screenshot = bitmap,
-                        selectedBitmap = null,
-                        liveOcrText = "",
-                        liveAnswerText = "",
-                        result = null,
                         error = null,
-                        working = false,
-                        sendingFollowUp = false,
-                        followUpDraft = "",
                         capturing = false,
                         sheetVisible = true,
                         sheetMode = OverlaySheetMode.CROP,
@@ -225,17 +221,34 @@ internal class OverlayViewModel(
                     )
                 }
                 bubbleStateMachine.forceState(BubbleState.Idle)
-            }.onFailure { error ->
-                AppDebugLogStore.e(tag, "openCropSheet failed", error)
-                _uiState.update {
-                    it.copy(
-                        error = error.message ?: "截屏失败",
-                        capturing = false,
-                        sheetVisible = true,
-                        sheetMode = OverlaySheetMode.CROP
-                    )
-                }
+            } catch (error: CancellationException) {
+                _uiState.update { it.copy(capturing = false) }
+                throw error
+            } catch (error: Exception) {
+                reportRegionSelectionFailure(error)
             }
+        }
+    }
+
+    fun cancelRegionSelection() {
+        _uiState.update {
+            it.copy(screenshot = it.selectedBitmap, sheetVisible = false,
+                sheetMode = OverlaySheetMode.RESULT, settingsMenuVisible = false)
+        }
+    }
+
+    fun confirmRegionSelection(bitmap: Bitmap) {
+        if (!_uiState.value.isSelectingRegion() || _uiState.value.working) return
+        answerController.process(bitmap)
+        _uiState.update { it.copy(screenshot = bitmap) }
+    }
+
+    fun reportRegionSelectionFailure(error: Throwable) {
+        AppDebugLogStore.e(tag, "region selection failed", error)
+        _uiState.update {
+            it.copy(error = error.message ?: "无法打开区域截图，请检查截图授权", capturing = false,
+                screenshot = null, selectedBitmap = null, result = null, liveAnswerText = "", liveOcrText = "",
+                sheetVisible = true, settingsMenuVisible = false, sheetMode = OverlaySheetMode.RESULT)
         }
     }
 

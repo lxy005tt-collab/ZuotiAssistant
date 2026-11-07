@@ -3,7 +3,6 @@ package `fun`.kirari.hanako.feature.overlay.window
 import androidx.annotation.DrawableRes
 import `fun`.kirari.hanako.R
 import `fun`.kirari.hanako.core.data.AppSettings
-import `fun`.kirari.hanako.core.model.ProcessingRoute
 import `fun`.kirari.hanako.feature.overlay.state.BubbleMenuItem
 
 /**
@@ -31,10 +30,9 @@ object BubbleMenuRegistry {
     val entries: List<BubbleMenuEntry> = listOf(
         BubbleMenuEntry(item = BubbleMenuItem.ShowAnswer, label = "答案", iconRes = R.drawable.ic_bubble_answer),
         BubbleMenuEntry(
-            item = BubbleMenuItem.ToggleRoute,
-            label = "视觉",
-            iconRes = R.drawable.ic_bubble_route,
-            isChecked = { it.processingRoute == ProcessingRoute.MULTIMODAL_DIRECT }
+            item = BubbleMenuItem.SelectRegion,
+            label = "区域",
+            iconRes = R.drawable.ic_bubble_crop
         ),
         BubbleMenuEntry(
             item = BubbleMenuItem.ToggleSearch,

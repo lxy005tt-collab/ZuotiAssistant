@@ -4,8 +4,10 @@ import `fun`.kirari.hanako.core.debug.AppDebugLogStore
 import `fun`.kirari.hanako.feature.overlay.presentation.OverlayViewModel
 import `fun`.kirari.hanako.feature.overlay.state.AutoRunState
 import `fun`.kirari.hanako.feature.overlay.state.OverlayUiState
+import `fun`.kirari.hanako.feature.overlay.state.isSelectingRegion
 import `fun`.kirari.hanako.feature.overlay.window.BubbleWindowController
 import `fun`.kirari.hanako.feature.overlay.window.PanelWindowController
+import `fun`.kirari.hanako.feature.overlay.window.RegionSelectionWindowController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -15,7 +17,8 @@ internal class OverlayStateObserver(
     private val scope: CoroutineScope,
     private val viewModel: OverlayViewModel,
     private val bubbleWindowController: BubbleWindowController,
-    private val panelWindowController: PanelWindowController
+    private val panelWindowController: PanelWindowController,
+    private val regionSelectionWindowController: RegionSelectionWindowController
 ) {
     private val logTag = "HanakoOverlayState"
     private var completionResetJob: Job? = null
@@ -29,12 +32,15 @@ internal class OverlayStateObserver(
                     "uiState launchMode=${state.launchMode} autoRunState=${state.autoRunState} bubble=${state.bubbleState::class.simpleName} sheetVisible=${state.sheetVisible} working=${state.working} resultId=${state.result?.id} error=${state.error}"
                 )
                 bubbleWindowController.update(state)
-                if (state.capturing && !state.sheetVisible) {
+                if (state.isSelectingRegion()) {
                     panelWindowController.dismiss()
-                } else if (state.sheetVisible) {
-                    panelWindowController.showOrUpdate(state.sheetMode)
+                    runCatching { regionSelectionWindowController.show(checkNotNull(state.screenshot)) }
+                        .onFailure(viewModel::reportRegionSelectionFailure)
                 } else {
-                    panelWindowController.hideWithAnimation()
+                    regionSelectionWindowController.dismiss()
+                    if (state.capturing && !state.sheetVisible) panelWindowController.dismiss()
+                    else if (state.sheetVisible) panelWindowController.showOrUpdate(state.sheetMode)
+                    else panelWindowController.hideWithAnimation()
                 }
                 scheduleCompletionReset(state)
             }

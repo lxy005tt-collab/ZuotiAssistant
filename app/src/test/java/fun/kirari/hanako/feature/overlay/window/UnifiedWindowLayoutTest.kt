@@ -17,18 +17,19 @@ class UnifiedWindowLayoutTest {
     }
 
     @Test
-    fun collapsingNearBottomRight_movesAndShrinksDuringTheSameFrame() {
+    fun collapsingNearBottomRight_staysAtTheVisibleControlsInsteadOfTheOldAnchor() {
         val anchor = CardBounds(260, 700, 347, 745)
         val expanded = placeUnifiedWindow(screen, anchor, 210, 315)
-        val middle = interpolateWindowBounds(expanded, anchor, .5f)
-        assertTrue(middle.left > expanded.left && middle.left < anchor.left)
-        assertTrue(middle.top > expanded.top && middle.top < anchor.top)
+        val collapsed = placeUnifiedWindow(screen, expanded, anchor.width, anchor.height)
+        val middle = interpolateWindowBounds(expanded, collapsed, .5f)
+        assertEquals(expanded.left, middle.left)
+        assertEquals(expanded.top, middle.top)
         assertTrue(middle.width < expanded.width && middle.width > anchor.width)
         assertTrue(middle.height < expanded.height && middle.height > anchor.height)
-        assertEquals(anchor, interpolateWindowBounds(expanded, anchor, 1f))
-        val host = motionWindowBounds(expanded, anchor)
+        assertEquals(collapsed, interpolateWindowBounds(expanded, collapsed, 1f))
+        val host = motionWindowBounds(expanded, collapsed)
         for (step in 0..20) {
-            val frame = interpolateWindowBounds(expanded, anchor, step / 20f)
+            val frame = interpolateWindowBounds(expanded, collapsed, step / 20f)
             assertTrue(frame.left >= host.left && frame.right <= host.right)
             assertTrue(frame.top >= host.top && frame.bottom <= host.bottom)
         }
@@ -48,12 +49,16 @@ class UnifiedWindowLayoutTest {
     }
 
     @Test
-    fun collapsingAfterEdgeGrowth_restoresTheOriginalControlPosition() {
+    fun collapsingAfterEdgeGrowth_keepsTheVisibleControlPosition() {
         val anchor = CardBounds(236, 680, 352, 740)
         val expanded = placeUnifiedWindow(screen, anchor, 280, 420)
         assertTrue(expanded.top < anchor.top)
         assertTrue(expanded.left < anchor.left)
-        assertEquals(anchor, placeUnifiedWindow(screen, anchor, anchor.width, anchor.height))
+        val collapsed = placeUnifiedWindow(screen, expanded, anchor.width, anchor.height)
+        assertEquals(expanded.left, collapsed.left)
+        assertEquals(expanded.top, collapsed.top)
+        assertEquals(anchor.width, collapsed.width)
+        assertEquals(anchor.height, collapsed.height)
     }
 
     @Test

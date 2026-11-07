@@ -2,6 +2,7 @@ package `fun`.kirari.hanako.feature.overlay.service
 
 import `fun`.kirari.hanako.feature.overlay.window.BubbleWindowController
 import `fun`.kirari.hanako.feature.overlay.window.PanelWindowController
+import `fun`.kirari.hanako.feature.overlay.window.RegionSelectionWindowController
 import `fun`.kirari.hanako.feature.overlay.presentation.OverlayViewModel
 import `fun`.kirari.hanako.feature.overlay.OverlayDependencies
 import `fun`.kirari.hanako.feature.overlay.OverlayDependenciesProvider
@@ -49,6 +50,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
     private lateinit var dependencies: OverlayDependencies
     private var bubbleWindowController: BubbleWindowController? = null
     private var panelWindowController: PanelWindowController? = null
+    private var regionSelectionWindowController: RegionSelectionWindowController? = null
     private var stateObserver: OverlayStateObserver? = null
     private var automationEffectObserver: OverlayAutomationEffectObserver? = null
 
@@ -94,11 +96,19 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             )
             val bubbleController = checkNotNull(bubbleWindowController)
             val panelController = checkNotNull(panelWindowController)
+            val regionController = RegionSelectionWindowController(
+                context = this, windowManager = windowManager, lifecycleOwner = this,
+                viewModelStoreOwner = this, savedStateRegistryOwner = this,
+                onCancel = overlayViewModel::cancelRegionSelection,
+                onConfirm = overlayViewModel::confirmRegionSelection
+            )
+            regionSelectionWindowController = regionController
             stateObserver = OverlayStateObserver(
                 scope = serviceScope,
                 viewModel = overlayViewModel,
                 bubbleWindowController = bubbleController,
-                panelWindowController = panelController
+                panelWindowController = panelController,
+                regionSelectionWindowController = regionController
             )
             automationEffectObserver = OverlayAutomationEffectObserver(
                 context = this,
@@ -139,6 +149,8 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
     }
 
     override fun onDestroy() {
+        regionSelectionWindowController?.dismiss()
+        regionSelectionWindowController = null
         panelWindowController?.dismiss()
         panelWindowController = null
         bubbleWindowController?.destroy()

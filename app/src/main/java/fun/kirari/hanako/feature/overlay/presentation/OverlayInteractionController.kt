@@ -23,7 +23,7 @@ internal class OverlayInteractionController(
     private val cancelActiveProcessing: () -> Unit,
     private val enterMultiPageCaptureMode: () -> Unit,
     private val isBubbleMenuEnabled: () -> Boolean,
-    private val toggleProcessingRoute: () -> Unit,
+    private val selectRegion: () -> Unit,
     private val toggleWebSearch: () -> Unit,
     private val openSettings: () -> Unit,
     private val openAnswer: () -> Unit
@@ -161,7 +161,7 @@ internal class OverlayInteractionController(
         AppDebugLogStore.i(tag, "handleMenuSelect item=$item")
         when (item) {
             BubbleMenuItem.ShowAnswer -> openAnswer()
-            BubbleMenuItem.ToggleRoute -> toggleProcessingRoute()
+            BubbleMenuItem.SelectRegion -> selectRegion()
             BubbleMenuItem.ToggleSearch -> toggleWebSearch()
             BubbleMenuItem.Settings -> openSettings()
             BubbleMenuItem.VoiceRecognition -> {

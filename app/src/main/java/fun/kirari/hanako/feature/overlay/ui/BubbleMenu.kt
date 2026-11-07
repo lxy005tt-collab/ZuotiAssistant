@@ -47,10 +47,10 @@ private val ButtonSize = 48.dp
 private val ContainerWidth = 58.dp
 private val ContainerHeight = 58.dp
 private val ScreenMargin = 8.dp
-private val PrimaryBlue = Color(0xD9368DFF)
+private val PrimaryBlue = Color(0xD9171717)
 private val OnPrimary = Color.White
 private val InactiveSurface = Color.White.copy(alpha = 0.84f)
-private val OnInactive = Color(0xFF1D1B20)
+private val OnInactive = Color(0xFF1D1D1D)
 private val DisabledSurface = Color(0xFFE0E0E0)
 private val OnDisabled = Color(0xFF9E9E9E)
 

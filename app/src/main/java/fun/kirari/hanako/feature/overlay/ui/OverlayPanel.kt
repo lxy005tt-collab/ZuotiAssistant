@@ -56,6 +56,7 @@ internal fun OverlayPanel(
     if (uiState.settingsMenuVisible) {
         AnswerBubbleTheme(enabled = true) {
             CompactOverlaySettings(uiState.settings,
+                busy = uiState.working || uiState.capturing,
                 onSelect = { item ->
                     if (item == BubbleMenuItem.Settings) viewModel.closeSheet()
                     viewModel.handleMenuSelect(item)

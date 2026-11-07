@@ -1,6 +1,7 @@
 package `fun`.kirari.hanako.feature.overlay.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +40,7 @@ import `fun`.kirari.hanako.feature.overlay.window.BubbleMenuRegistry
 @Composable
 internal fun CompactOverlaySettings(
     settings: AppSettings,
+    busy: Boolean = false,
     onSelect: (BubbleMenuItem) -> Unit,
     onContentHeightChanged: (Int) -> Unit
 ) {
@@ -50,10 +52,11 @@ internal fun CompactOverlaySettings(
         Row(Modifier.fillMaxWidth().onSizeChanged { height = it.height }
             .padding(horizontal = 6.dp, vertical = 4.dp)) {
             BubbleMenuRegistry.entries.forEach { entry ->
-                val enabled = entry.isEnabled(settings)
+                val enabled = entry.isEnabled(settings) && (!busy || entry.item != BubbleMenuItem.SelectRegion)
                 Column(
                     Modifier.weight(1f).heightIn(min = 48.dp)
                         .clip(RoundedCornerShape(12.dp))
+                        .background(if (entry.isChecked(settings)) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                         .clickable(enabled = enabled, role = Role.Button) { onSelect(entry.item) }
                         .alpha(if (enabled) 1f else .38f)
                         .padding(vertical = 4.dp),
@@ -62,7 +65,7 @@ internal fun CompactOverlaySettings(
                 ) {
                     Icon(painterResource(entry.iconRes), contentDescription = null,
                         modifier = Modifier.size(20.dp),
-                        tint = if (entry.isChecked(settings)) Color(0xFF2F83E8) else MaterialTheme.colorScheme.onSurface)
+                        tint = MaterialTheme.colorScheme.onSurface)
                     Text(entry.label, style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
                 }

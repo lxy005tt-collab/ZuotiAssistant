@@ -203,20 +203,13 @@ fun HanakoApp(viewModel: AppViewModel) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        if (homeVisible) chromeColors.background else chromeColors.surfaceContainerLow,
-                        if (homeVisible) chromeColors.background else chromeColors.surface
-                    )
-                )
-            )
+            .background(chromeColors.background)
     ) {
         Scaffold(
             modifier = if (historyQuoteFocused) Modifier.blur(1.5.dp) else Modifier,
             topBar = {
                 MaterialTheme(colorScheme = chromeColors) {
-                    CenterAlignedTopAppBar(
+                    if (!homeVisible) CenterAlignedTopAppBar(
                         modifier = Modifier
                             .then(if (topBarScrollToTopEnabled) {
                                 Modifier.clickable { scrollToTopController.scrollToTop(currentRoute) }
@@ -233,13 +226,6 @@ fun HanakoApp(viewModel: AppViewModel) {
                                     } else appTitle(currentRoute, currentScreen),
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                if (
-                                    currentRoute == ROUTE_HOME_SHELL &&
-                                    currentScreen == Screen.Hanako &&
-                                    appUpdateState.availableUpdate != null
-                                ) {
-                                    UpgradeIconButton(onClick = viewModel::showUpdateDialog)
-                                }
                             }
                         },
                         navigationIcon = {
@@ -304,6 +290,8 @@ fun HanakoApp(viewModel: AppViewModel) {
                             onScreenChange = { currentScreen = it },
                             hanakoContent = {
                                 HanakoHomeScreen(
+                                    updateAvailable = appUpdateState.availableUpdate != null,
+                                    onShowUpdate = viewModel::showUpdateDialog,
                                     settings = settings,
                                     overlayEnabled = overlayEnabled,
                                     hasOverlayPermission = hasOverlayPermission,

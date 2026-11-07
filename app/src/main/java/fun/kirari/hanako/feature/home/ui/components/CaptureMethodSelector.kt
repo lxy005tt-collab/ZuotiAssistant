@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.HelpOutline
@@ -15,9 +16,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,23 +53,12 @@ internal fun CaptureMethodSelector(
                 )
             }
         }
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            ScreenCaptureMethod.entries.forEachIndexed { index, method ->
-                SegmentedButton(
-                    selected = selectedMethod == method,
-                    onClick = { onSelect(method) },
-                    shape = SegmentedButtonDefaults.itemShape(index, ScreenCaptureMethod.entries.size),
-                    modifier = Modifier.heightIn(min = 48.dp),
-                    colors = SegmentedButtonDefaults.colors(
-                        activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        activeBorderColor = MaterialTheme.colorScheme.primary,
-                        inactiveContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                        inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        inactiveBorderColor = MaterialTheme.colorScheme.outlineVariant
-                    ),
-                    label = { Text(if (method == ScreenCaptureMethod.MEDIA_PROJECTION) "系统录屏" else "Shizuku") }
-                )
+        Column(Modifier.fillMaxWidth().selectableGroup()) {
+            HomeChoiceRow("系统录屏", "系统授权，无需额外工具", selectedMethod == ScreenCaptureMethod.MEDIA_PROJECTION) {
+                onSelect(ScreenCaptureMethod.MEDIA_PROJECTION)
+            }
+            HomeChoiceRow("Shizuku", "按需截图，需要服务运行", selectedMethod == ScreenCaptureMethod.SHIZUKU_ADB) {
+                onSelect(ScreenCaptureMethod.SHIZUKU_ADB)
             }
         }
         if (overlayEnabled) Text("切换方案后需重新启动悬浮窗。", style = MaterialTheme.typography.bodySmall,

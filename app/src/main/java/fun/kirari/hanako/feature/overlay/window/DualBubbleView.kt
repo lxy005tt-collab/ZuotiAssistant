@@ -56,7 +56,7 @@ internal class DualBubbleView(
     private val iconColor = ContextCompat.getColor(context, R.color.overlay_icon)
     private val blue = ContextCompat.getColor(context, R.color.overlay_orbit_blue)
     private val lightBlue = ContextCompat.getColor(context, R.color.overlay_orbit_light)
-    private val settingsFill = Color.rgb(235, 242, 250)
+    private val settingsFill = Color.rgb(245, 245, 245)
     private var phase = 0f
     private var processing = false
     private var expanded = false
@@ -76,7 +76,7 @@ internal class DualBubbleView(
     private val settingsTarget = View(context).apply {
         contentDescription = "悬浮窗设置"
         isFocusable = true
-        background = circleRipple(Color.argb(45, 54, 141, 255))
+        background = circleRipple(Color.argb(40, 0, 0, 0))
         setOnClickListener { onSettings() }
     }
     private val captureTarget = View(context).apply {
@@ -160,7 +160,7 @@ internal class DualBubbleView(
         val cy = right.centerY()
         captureGradient = LinearGradient(
             right.left, right.top, right.right, right.bottom,
-            Color.rgb(92, 171, 255), Color.rgb(36, 105, 222), Shader.TileMode.CLAMP
+            Color.rgb(23, 23, 23), Color.rgb(23, 23, 23), Shader.TileMode.CLAMP
         )
         val radius = 10f * density
         val arm = 4.5f * density
@@ -222,7 +222,7 @@ internal class DualBubbleView(
             canvas.drawPath(outline, paint)
         }
         if (expansionFraction > 0f) {
-            paint.color = Color.argb((58 * expansionFraction).roundToInt(), 47, 69, 96)
+            paint.color = Color.argb((58 * expansionFraction).roundToInt(), 0, 0, 0)
             canvas.drawRoundRect(drawingWidth / 2f - 9 * density, desiredHeight / 2f - 1.5f * density,
                 drawingWidth / 2f + 9 * density, desiredHeight / 2f + 1.5f * density, 2 * density, 2 * density, paint)
         }
@@ -240,8 +240,8 @@ internal class DualBubbleView(
             measure.getSegment(start.coerceAtLeast(0f), end, lightTrail, true)
             paint.strokeCap = Paint.Cap.ROUND
             paint.color = blue
-            paint.alpha = 65
-            paint.strokeWidth = 7 * density
+            paint.alpha = 35
+            paint.strokeWidth = 4 * density
             canvas.drawPath(lightTrail, paint)
             paint.alpha = 255
             paint.strokeWidth = 2.4f * density

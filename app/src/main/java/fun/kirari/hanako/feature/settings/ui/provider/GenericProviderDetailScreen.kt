@@ -189,7 +189,7 @@ private fun ConnectionTestRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             AnimatedVisibility(visible = isSuccess || isFail, enter = fadeIn(), exit = fadeOut()) {
-                val tint = if (isSuccess) Color(0xFF10B981) else MaterialTheme.colorScheme.error
+                val tint = if (isSuccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)

@@ -1,4 +1,4 @@
 <resources>
-    <color name="overlay_glass_fill">#E8FAFCFF</color>
-    <color name="overlay_icon">#1B2B41</color>
+    <color name="overlay_glass_fill">#E8FFFFFF</color>
+    <color name="overlay_icon">#171717</color>
 </resources>

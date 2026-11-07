@@ -60,8 +60,8 @@ sealed class BubbleState {
  */
 sealed class BubbleMenuItem {
     data object ShowAnswer : BubbleMenuItem()
-    /** OCR/视觉模式切换 */
-    data object ToggleRoute : BubbleMenuItem()
+    /** 选择截图区域并解题 */
+    data object SelectRegion : BubbleMenuItem()
     /** 联网搜索开关 */
     data object ToggleSearch : BubbleMenuItem()
     /** 语音识别（占位） */

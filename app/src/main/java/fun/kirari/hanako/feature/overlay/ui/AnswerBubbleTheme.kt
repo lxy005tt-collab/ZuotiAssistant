@@ -3,31 +3,14 @@ package `fun`.kirari.hanako.feature.overlay.ui
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.sp
 import `fun`.kirari.hanako.core.ui.richtext.LocalCopyMarkerCards
+import `fun`.kirari.hanako.core.ui.theme.MonochromeLightColors
 
-private val AnswerBubbleColors = lightColorScheme(
-    primary = Color.Black,
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFE6F0FF),
-    onPrimaryContainer = Color.Black,
-    secondary = Color.Black,
-    secondaryContainer = Color(0xFFEDF2F7),
-    onSecondaryContainer = Color.Black,
-    background = Color.White,
-    onBackground = Color.Black,
-    surface = Color.White,
-    surfaceVariant = Color(0xFFF2F5F9),
-    surfaceContainer = Color(0xFFF5F8FC),
-    surfaceContainerHigh = Color.White,
-    surfaceContainerHighest = Color(0xFFF2F5F9),
-    onSurface = Color.Black,
-    onSurfaceVariant = Color.Black
-)
+private val AnswerBubbleColors = MonochromeLightColors
 
 @Composable
 internal fun AnswerBubbleTheme(enabled: Boolean, answerTextSizeSp: Int? = null, content: @Composable () -> Unit) {

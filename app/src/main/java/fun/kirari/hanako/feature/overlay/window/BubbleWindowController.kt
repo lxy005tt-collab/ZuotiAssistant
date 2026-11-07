@@ -29,6 +29,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import `fun`.kirari.hanako.core.data.FloatingWindowSettings
 import `fun`.kirari.hanako.feature.overlay.state.OverlayUiState
+import `fun`.kirari.hanako.feature.overlay.state.isSelectingRegion
 import kotlin.math.roundToInt
 
 /** The controls and every expanded sheet share this single native overlay window. */
@@ -77,7 +78,7 @@ internal class BubbleWindowController(
     val headerHeight: Int get() = controls?.desiredHeight ?: cardDp(60)
     private val cardBackground = GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
-        intArrayOf(Color.WHITE, Color.rgb(246, 250, 255))
+        intArrayOf(Color.WHITE, Color.WHITE)
     ).apply {
         cornerRadius = cardDp(24).toFloat()
         alpha = backgroundAlpha
@@ -175,6 +176,9 @@ internal class BubbleWindowController(
         val body = panel
         if (animate && closing) return
         cancelBoundsAnimation()
+        // After edge clamping, keep the controls where the user currently sees them.
+        // Closing no longer pulls the window back towards its pre-expansion position.
+        if (body != null) visualBounds?.let { anchorX = it.left; anchorY = it.top }
         if (!animate || host == null || header == null || body == null ||
             root?.visibility != View.VISIBLE || !host.isAttachedToWindow) {
             finishHidingPanel()
@@ -227,7 +231,8 @@ internal class BubbleWindowController(
             }
         }
         controls?.update(state.working || state.capturing, state.settingsMenuVisible)
-        root?.visibility = if (state.capturing && (!captureExclusionApplied || !state.sheetVisible)) View.INVISIBLE else View.VISIBLE
+        root?.visibility = if (state.isSelectingRegion() ||
+            (state.capturing && (!captureExclusionApplied || !state.sheetVisible))) View.INVISIBLE else View.VISIBLE
     }
 
     fun prepareForCapture(): Boolean {

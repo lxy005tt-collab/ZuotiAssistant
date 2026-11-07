@@ -29,17 +29,21 @@ internal fun HanakoHomeScreen(
     onOpenOverlayPermission: () -> Unit,
     onToggleOverlay: (Boolean) -> Unit,
     onSelectRoute: (ProcessingRoute) -> Unit,
-    onSelectCaptureMethod: (ScreenCaptureMethod) -> Unit
+    onSelectCaptureMethod: (ScreenCaptureMethod) -> Unit,
+    updateAvailable: Boolean = false,
+    onShowUpdate: () -> Unit = {}
 ) {
     HanakoHomeTheme {
         val context = LocalContext.current
         LazyColumn(
             modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
                 HeroSection(
+                    updateAvailable = updateAvailable,
+                    onShowUpdate = onShowUpdate,
                     overlayEnabled = overlayEnabled,
                     hasOverlayPermission = hasOverlayPermission,
                     captureMethod = settings.screenCaptureMethod,
@@ -69,7 +73,6 @@ internal fun HanakoHomeScreen(
                     }
                 )
             }
-            item { Spacer(modifier = Modifier.height(80.dp)) }
         }
     }
 }
