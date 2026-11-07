@@ -44,11 +44,14 @@ import `fun`.kirari.hanako.core.data.ModelPurpose
 import `fun`.kirari.hanako.core.data.displayName
 import `fun`.kirari.hanako.core.data.resolveModelName
 import `fun`.kirari.hanako.core.data.resolveModelProvider
+import `fun`.kirari.hanako.core.ui.components.ReasoningEffortControl
+import `fun`.kirari.llm.core.ReasoningEffort
 
 @Composable
 fun ModelSettingsScreen(
     settings: AppSettings,
-    onPickModel: (ModelPurpose) -> Unit
+    onPickModel: (ModelPurpose) -> Unit,
+    onReasoningEffortChange: (ReasoningEffort) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -78,6 +81,16 @@ fun ModelSettingsScreen(
         }
 
         // 将设置项收纳进统一的 MD3 大卡片容器中
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("模型思考强度", style = MaterialTheme.typography.titleMedium)
+                    ReasoningEffortControl(settings = settings, onChange = onReasoningEffortChange)
+                    Text("应用于当前识题模式的解题、重新生成和追问。自动使用模型默认设置；较高强度可能增加等待时间和用量。档位支持取决于模型和提供方。",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),

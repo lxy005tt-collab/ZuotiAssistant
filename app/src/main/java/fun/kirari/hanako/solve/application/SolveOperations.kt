@@ -99,16 +99,16 @@ internal class SolveOperations(
         prompt: String,
         quotedFragments: List<QuotedFragment> = emptyList(),
         modelSelection: ModelSelection? = null
-    ) {
-        startConversation(settings, historyId, ConversationIntent.NewTurn(prompt, quotedFragments), modelSelection)
+    ): SolveTaskHandle? {
+        return startConversation(settings, historyId, ConversationIntent.NewTurn(prompt, quotedFragments), modelSelection)
     }
 
     suspend fun retryLatestConversation(
         settings: AppSettings,
         historyId: String,
         modelSelection: ModelSelection? = null
-    ) {
-        startConversation(settings, historyId, ConversationIntent.RegenerateLatest, modelSelection)
+    ): SolveTaskHandle? {
+        return startConversation(settings, historyId, ConversationIntent.RegenerateLatest, modelSelection)
     }
 
     private suspend fun startConversation(
@@ -116,27 +116,28 @@ internal class SolveOperations(
         historyId: String,
         intent: ConversationIntent,
         modelSelection: ModelSelection?
-    ) {
-        val existing = taskManager.latestHistoryResult(historyId) ?: return
-        if (taskManager.isRunning(historyId)) return
+    ): SolveTaskHandle? {
+        val existing = taskManager.latestHistoryResult(historyId) ?: return null
+        if (taskManager.isRunning(historyId)) return null
         val normalizedIntent = when (intent) {
             is ConversationIntent.NewTurn -> {
                 val prompt = intent.prompt.trim()
-                if (prompt.isBlank()) return
+                if (prompt.isBlank()) return null
                 ConversationIntent.NewTurn(prompt, intent.quotedFragments)
             }
             ConversationIntent.RegenerateLatest -> {
-                if (existing.followUpTurns.isEmpty()) return
+                if (existing.followUpTurns.isEmpty()) return null
                 ConversationIntent.RegenerateLatest
             }
         }
         val conversationSettings = settings.withConversationModel(existing.route, modelSelection)
-        val models = resolveModels(conversationSettings, historyId)?.copy(route = existing.route) ?: return
-        taskManager.startConversationTask(
+        val models = resolveModels(conversationSettings, historyId)?.copy(route = existing.route) ?: return null
+        val taskId = taskManager.startConversationTask(
             existingResult = existing,
             models = models,
             intent = normalizedIntent
         )
+        return taskHandle(taskId)
     }
 
     fun cancelTask(taskId: String) {

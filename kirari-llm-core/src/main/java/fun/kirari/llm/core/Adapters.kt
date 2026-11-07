@@ -12,6 +12,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -35,6 +36,7 @@ internal class OpenAiChatAdapter(
             put("model", request.model)
             put("stream", true)
             put("messages", openAiMessages(messages))
+            putReasoning(request)
             request.tools?.let { put("tools", ToolRegistry.formatForProvider(it, request.provider.kind)) }
         }
         if (logger.isVerboseEnabled) {
@@ -80,7 +82,8 @@ internal class OpenAiChatAdapter(
 
                     SseStreamClient.StreamEventResult(
                         delta = textDelta.ifEmpty { null },
-                        activity = delta["tool_calls"] is JsonArray
+                        activity = delta["tool_calls"] is JsonArray ||
+                            !delta["reasoning_content"]?.jsonPrimitive?.contentOrNull.isNullOrEmpty()
                     )
                 }
             },
@@ -121,12 +124,17 @@ internal class OpenAiResponsesAdapter(
                 put("tools", ToolRegistry.formatForProvider(it, request.provider.kind))
             }
             put("input", responsesInput(messages))
+            putReasoning(request)
+            if (request.tools != null || request.reasoningEffort != ReasoningEffort.AUTO) {
+                putJsonArray("include") { add(JsonPrimitive("reasoning.encrypted_content")) }
+            }
         }
         if (logger.isVerboseEnabled) {
             logger.v(tag, "responses request payload=${payload.toString().sanitizeForLog()}")
         }
 
         val toolCalls = linkedMapOf<String, PendingToolCall>()
+        val reasoningItems = mutableListOf<JsonObject>()
 
         sseClient.stream(
             request = baseRequest(request.provider, "${request.provider.baseUrl.trimEnd('/')}/responses", payload, json, mediaType),
@@ -153,6 +161,10 @@ internal class OpenAiResponsesAdapter(
 
                     "response.output_item.added", "response.output_item.done" -> {
                         val item = root["item"]?.jsonObject ?: return@stream null
+                        if (item["type"]?.jsonPrimitive?.contentOrNull == "reasoning") {
+                            if (type == "response.output_item.done") reasoningItems += item
+                            return@stream SseStreamClient.StreamEventResult(activity = true)
+                        }
                         if (item["type"]?.jsonPrimitive?.contentOrNull == "function_call") {
                             val itemId = item["id"]?.jsonPrimitive?.contentOrNull ?: return@stream null
                             val tc = toolCalls.getOrPut(itemId) { PendingToolCall() }
@@ -191,7 +203,7 @@ internal class OpenAiResponsesAdapter(
             val name = tc.name ?: continue
             val args = runCatching { json.parseToJsonElement(tc.arguments.toString()).jsonObject }.getOrNull()
                 ?: continue
-            trySend(LlmEvent.ToolCall(tc.id, name, args))
+            trySend(LlmEvent.ToolCall(tc.id, name, args, reasoningItems.toList()))
         }
         trySend(LlmEvent.Done)
         close()
@@ -219,12 +231,14 @@ internal class AnthropicAdapter(
                 put("tools", ToolRegistry.formatForProvider(it, request.provider.kind))
             }
             put("messages", anthropicMessages(messages))
+            putReasoning(request)
         }
         if (logger.isVerboseEnabled) {
             logger.v(tag, "anthropic request payload=${payload.toString().sanitizeForLog()}")
         }
 
         val toolCallsByIndex = linkedMapOf<Int, PendingToolCall>()
+        val thinkingBlocks = sortedMapOf<Int, JsonObject>()
 
         sseClient.stream(
             request = baseRequest(
@@ -244,6 +258,10 @@ internal class AnthropicAdapter(
                     "content_block_start" -> {
                         val index = root["index"]?.jsonPrimitive?.intOrNull ?: return@stream null
                         val block = root["content_block"]?.jsonObject ?: return@stream null
+                        if (block["type"]?.jsonPrimitive?.contentOrNull in listOf("thinking", "redacted_thinking")) {
+                            thinkingBlocks[index] = block
+                            return@stream SseStreamClient.StreamEventResult(activity = true)
+                        }
                         if (block["type"]?.jsonPrimitive?.contentOrNull == "tool_use") {
                             val tc = toolCallsByIndex.getOrPut(index) { PendingToolCall() }
                             tc.id = block["id"]?.jsonPrimitive?.contentOrNull
@@ -260,6 +278,13 @@ internal class AnthropicAdapter(
                         val index = root["index"]?.jsonPrimitive?.intOrNull ?: return@stream null
                         val delta = root["delta"]?.jsonObject ?: return@stream null
                         when (delta["type"]?.jsonPrimitive?.contentOrNull) {
+                            "thinking_delta", "signature_delta" -> {
+                                val key = if (delta["type"]?.jsonPrimitive?.contentOrNull == "thinking_delta") "thinking" else "signature"
+                                val block = thinkingBlocks[index] ?: buildJsonObject { put("type", "thinking") }
+                                val value = block[key]?.jsonPrimitive?.contentOrNull.orEmpty() + delta[key]?.jsonPrimitive?.contentOrNull.orEmpty()
+                                thinkingBlocks[index] = JsonObject(block + (key to JsonPrimitive(value)))
+                                SseStreamClient.StreamEventResult(activity = true)
+                            }
                             "text_delta" -> {
                                 val text = delta["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
                                 if (text.isNotEmpty()) {
@@ -288,7 +313,7 @@ internal class AnthropicAdapter(
             val name = tc.name ?: continue
             val args = runCatching { json.parseToJsonElement(tc.arguments.toString()).jsonObject }.getOrNull()
                 ?: continue
-            trySend(LlmEvent.ToolCall(tc.id, name, args))
+            trySend(LlmEvent.ToolCall(tc.id, name, args, thinkingBlocks.values.toList()))
         }
         trySend(LlmEvent.Done)
         close()
@@ -310,6 +335,7 @@ internal class GoogleAdapter(
         val payload = buildJsonObject {
             googleSystem(messages)?.let { put("systemInstruction", it) }
             put("contents", googleContents(messages))
+            putReasoning(request)
             request.tools?.let { tools ->
                 put("tools", buildJsonArray {
                     add(ToolRegistry.formatForProvider(tools, request.provider.kind))
@@ -327,8 +353,7 @@ internal class GoogleAdapter(
         if (json !== Json.Default && false) Unit
 
         val url = "${request.provider.baseUrl.trimEnd('/')}/models/${request.model}:streamGenerateContent?alt=sse"
-        var toolName: String? = null
-        var toolArgs: JsonObject? = null
+        val toolCalls = mutableListOf<LlmEvent.ToolCall>()
 
         sseClient.stream(
             request = baseRequest(request.provider, url, payload, json, mediaType),
@@ -342,10 +367,13 @@ internal class GoogleAdapter(
                 var deltaText = ""
                 parts.forEach { part ->
                     val obj = part.jsonObject
-                    obj["text"]?.jsonPrimitive?.contentOrNull?.let { deltaText += it }
+                    if (obj["thought"]?.jsonPrimitive?.booleanOrNull != true) {
+                        obj["text"]?.jsonPrimitive?.contentOrNull?.let { deltaText += it }
+                    }
                     obj["functionCall"]?.jsonObject?.let { call ->
-                        toolName = call["name"]?.jsonPrimitive?.contentOrNull
-                        toolArgs = call["args"]?.jsonObject
+                        val name = call["name"]?.jsonPrimitive?.contentOrNull ?: return@let
+                        val args = call["args"]?.jsonObject ?: JsonObject(emptyMap())
+                        toolCalls += LlmEvent.ToolCall(null, name, args, listOf(obj))
                     }
                 }
                 if (deltaText.isNotEmpty()) {
@@ -353,17 +381,13 @@ internal class GoogleAdapter(
                 }
                 SseStreamClient.StreamEventResult(
                     delta = deltaText.ifEmpty { null },
-                    activity = toolName != null && toolArgs != null
+                    activity = parts.isNotEmpty()
                 )
             },
             onDelta = {}
         )
 
-        val name = toolName
-        val args = toolArgs
-        if (name != null && args != null) {
-            trySend(LlmEvent.ToolCall(null, name, args))
-        }
+        toolCalls.forEach { trySend(it) }
         trySend(LlmEvent.Done)
         close()
 
@@ -450,10 +474,13 @@ private fun responsesInput(messages: List<ChatMessage>): JsonArray = buildJsonAr
                 }
             }
             "assistant" -> {
-                add(buildJsonObject {
-                    put("role", "assistant")
-                    put("content", responsesContent(message.content, assistant = true))
-                })
+                message.toolCalls.firstOrNull()?.providerContext?.forEach { add(it) }
+                if (contentText(message.content).isNotBlank()) {
+                    add(buildJsonObject {
+                        put("role", "assistant")
+                        put("content", responsesContent(message.content, assistant = true))
+                    })
+                }
                 message.toolCalls.forEach { call ->
                     add(buildJsonObject {
                         put("type", "function_call")
@@ -535,6 +562,7 @@ private fun anthropicMessages(messages: List<ChatMessage>): JsonArray = buildJso
 }
 
 private fun anthropicContent(message: ChatMessage): JsonArray = buildJsonArray {
+    message.toolCalls.firstOrNull()?.providerContext?.forEach { add(it) }
     (message.content as? JsonArray)?.forEach { part ->
         val obj = part.jsonObject
         when (obj["type"]?.jsonPrimitive?.contentOrNull) {
@@ -579,11 +607,39 @@ private fun googleSystem(messages: List<ChatMessage>): JsonObject? {
 }
 
 private fun googleContents(messages: List<ChatMessage>): JsonArray = buildJsonArray {
-    messages.filter { it.role != "system" && it.role != "developer" && it.role != "tool" && it.toolCalls.isEmpty() }
+    val callsById = messages.flatMap { it.toolCalls }.associateBy { it.id }
+    messages.filter { it.role != "system" && it.role != "developer" }
         .forEach { message ->
+            if (message.role == "tool") {
+                val call = callsById[message.toolCallId] ?: return@forEach
+                add(buildJsonObject {
+                    put("role", "user")
+                    putJsonArray("parts") {
+                        add(buildJsonObject {
+                            putJsonObject("functionResponse") {
+                                put("name", call.function.name)
+                                putJsonObject("response") { put("result", contentText(message.content)) }
+                            }
+                        })
+                    }
+                })
+                return@forEach
+            }
             add(buildJsonObject {
                 put("role", if (message.role == "assistant") "model" else "user")
                 putJsonArray("parts") {
+                    message.toolCalls.forEach { call ->
+                        if (call.providerContext.isNotEmpty()) {
+                            call.providerContext.forEach { add(it) }
+                        } else {
+                            add(buildJsonObject {
+                                putJsonObject("functionCall") {
+                                    put("name", call.function.name)
+                                    put("args", parseJsonObjectOrEmpty(call.function.arguments))
+                                }
+                            })
+                        }
+                    }
                     (message.content as? JsonArray)?.forEach { part ->
                         val obj = part.jsonObject
                         when (obj["type"]?.jsonPrimitive?.contentOrNull) {

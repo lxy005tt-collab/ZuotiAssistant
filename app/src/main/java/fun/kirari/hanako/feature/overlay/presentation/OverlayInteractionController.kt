@@ -25,7 +25,8 @@ internal class OverlayInteractionController(
     private val isBubbleMenuEnabled: () -> Boolean,
     private val toggleProcessingRoute: () -> Unit,
     private val toggleWebSearch: () -> Unit,
-    private val openSettings: () -> Unit
+    private val openSettings: () -> Unit,
+    private val openAnswer: () -> Unit
 ) {
     private val tag = "HanakoOverlayInteraction"
 
@@ -159,6 +160,7 @@ internal class OverlayInteractionController(
     fun handleMenuSelect(item: BubbleMenuItem) {
         AppDebugLogStore.i(tag, "handleMenuSelect item=$item")
         when (item) {
+            BubbleMenuItem.ShowAnswer -> openAnswer()
             BubbleMenuItem.ToggleRoute -> toggleProcessingRoute()
             BubbleMenuItem.ToggleSearch -> toggleWebSearch()
             BubbleMenuItem.Settings -> openSettings()

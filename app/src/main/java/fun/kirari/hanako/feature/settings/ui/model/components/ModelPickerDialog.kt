@@ -1,8 +1,6 @@
 package `fun`.kirari.hanako.feature.settings.ui.model.components
 
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,13 +31,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import `fun`.kirari.hanako.core.data.KIRARI_PROVIDER_ID
 import `fun`.kirari.hanako.core.data.ModelProviderConfig
 import `fun`.kirari.hanako.core.network.ProviderModelsApi
 import `fun`.kirari.llm.core.ProviderCatalog
@@ -51,8 +46,6 @@ data class ModelPickerEntry(
     val displayName: String = id,
     val isFavorite: Boolean = false,
     val isLocalOnly: Boolean = false,
-    val priceLabel: String? = null,
-    val recentTestResults: List<Boolean>? = null
 )
 
 @Composable
@@ -92,7 +85,6 @@ internal fun rememberModelPickerState(
         mergeModelEntries(
             sessionFavoriteOrder = sessionFavoriteOrder,
             visibleFavoriteModels = visibleFavoriteModels,
-            showKirariAvailability = provider.id == KIRARI_PROVIDER_ID,
             networkModels = catalog?.models
         )
     }
@@ -327,46 +319,12 @@ private fun ModelPickerEntryContent(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            model.priceLabel?.let { price ->
-                Text(
-                    text = price,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
         }
         if (model.isFavorite) {
             Icon(
                 imageVector = Icons.Default.Star,
                 contentDescription = "已收藏",
                 tint = MaterialTheme.colorScheme.primary
-            )
-        }
-        model.recentTestResults?.let { results ->
-            AvailabilityDots(results = results)
-        }
-    }
-}
-
-@Composable
-private fun AvailabilityDots(results: List<Boolean>) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        repeat(3) { index ->
-            val color = when (results.getOrNull(index)) {
-                true -> Color(0xFF34A853)
-                false -> Color(0xFFD93025)
-                null -> MaterialTheme.colorScheme.outlineVariant
-            }
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(color)
             )
         }
     }
@@ -386,7 +344,6 @@ private fun filterModelEntries(models: List<ModelPickerEntry>, query: String): L
 private fun mergeModelEntries(
     sessionFavoriteOrder: List<String>,
     visibleFavoriteModels: List<String>,
-    showKirariAvailability: Boolean,
     networkModels: List<RemoteModelOption>?
 ): List<ModelPickerEntry> {
     val visibleFavoriteSet = visibleFavoriteModels.map { it.lowercase() }.toSet()
@@ -404,8 +361,6 @@ private fun mergeModelEntries(
                 displayName = favorite,
                 isFavorite = true,
                 isLocalOnly = true,
-                priceLabel = null,
-                recentTestResults = if (showKirariAvailability) emptyList() else null
             )
         }
     }
@@ -418,8 +373,6 @@ private fun mergeModelEntries(
                 displayName = model.displayName,
                 isFavorite = visibleFavoriteSet.contains(key),
                 isLocalOnly = false,
-                priceLabel = model.pricePerTokenCredits?.let { "价格: ${it.formatCompactPrice()} credits/token" },
-                recentTestResults = if (showKirariAvailability) model.recentTestResults ?: emptyList() else null
             )
         } else if (visibleFavoriteSet.contains(key)) {
             val index = result.indexOfFirst { it.id.equals(model.id, ignoreCase = true) }
@@ -427,8 +380,6 @@ private fun mergeModelEntries(
                 result[index] = result[index].copy(
                     displayName = model.displayName,
                     isFavorite = true,
-                    priceLabel = model.pricePerTokenCredits?.let { "价格: ${it.formatCompactPrice()} credits/token" },
-                    recentTestResults = if (showKirariAvailability) model.recentTestResults ?: emptyList() else null
                 )
             }
         }
@@ -441,13 +392,4 @@ private fun List<String>.normalizedModelNames(): List<String> {
     return map(String::trim)
         .filter(String::isNotBlank)
         .distinctBy { it.lowercase() }
-}
-
-private fun Double.formatCompactPrice(): String {
-    val whole = toLong()
-    return if (toDouble() == whole.toDouble()) {
-        whole.toString()
-    } else {
-        String.format(java.util.Locale.US, "%.4f", this).trimEnd('0').trimEnd('.')
-    }
 }

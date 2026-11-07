@@ -19,7 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 
 enum class Screen(val title: String, val icon: ImageVector) {
-    Hanako("Hanako", Icons.Default.Home),
+    Hanako("首页", Icons.Default.Home),
     Settings("设置", Icons.Default.Settings)
 }
 

@@ -29,7 +29,7 @@ object ToolRegistry {
     )
 
     fun formatForProvider(tools: List<ToolDef>, kind: ProviderKind): JsonElement = when (kind) {
-        ProviderKind.OPENAI_COMPATIBLE, ProviderKind.KIRARI_NETWORK -> formatChatCompletions(tools)
+        ProviderKind.OPENAI_COMPATIBLE -> formatChatCompletions(tools)
         ProviderKind.OPENAI_RESPONSES -> formatResponses(tools)
         ProviderKind.ANTHROPIC -> formatAnthropic(tools)
         ProviderKind.GOOGLE -> formatGoogle(tools)

@@ -1,299 +1,211 @@
 package `fun`.kirari.hanako.feature.overlay.ui
 
-import `fun`.kirari.hanako.core.ui.richtext.MarkdownLatexText
-
-import `fun`.kirari.hanako.feature.overlay.state.AutoRunState
-import `fun`.kirari.hanako.platform.capture.CaptureLaunchMode
-import `fun`.kirari.hanako.feature.overlay.state.OverlaySheetMode
-import `fun`.kirari.hanako.feature.overlay.state.OverlayUiState
-
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import `fun`.kirari.hanako.platform.clipboard.copyToClipboardWithToast
-import `fun`.kirari.hanako.core.model.ProcessingEvent
-import `fun`.kirari.hanako.core.model.ProcessingRoute
-import `fun`.kirari.hanako.core.model.displayedAnswerVersions
 import `fun`.kirari.hanako.core.model.latestAnswerText
-import `fun`.kirari.hanako.core.ui.components.AnswerActionBar
-import `fun`.kirari.hanako.core.ui.components.AnswerSwitchDirection
-import `fun`.kirari.hanako.core.ui.components.AnimatedAnswerVersionContent
-import `fun`.kirari.hanako.core.ui.components.ResultContentCard
+import `fun`.kirari.hanako.core.model.currentAssistantText
+import `fun`.kirari.hanako.R
+import `fun`.kirari.hanako.core.ui.richtext.MarkdownLatexText
+import `fun`.kirari.hanako.core.ui.richtext.unwrapCopyMarkers
+import `fun`.kirari.hanako.feature.overlay.state.OverlayUiState
+import `fun`.kirari.hanako.platform.clipboard.copyToClipboardWithToast
 
 @Composable
 internal fun ResultOverlaySheet(
     uiState: OverlayUiState,
-    onClose: () -> Unit,
-    panelHeightPx: Int,
-    onRegenerate: () -> Unit
+    onRegenerate: () -> Unit,
+    onDraftChange: (String) -> Unit,
+    onSendFollowUp: () -> Unit,
+    onRetryFollowUp: () -> Unit,
+    onContentHeightChanged: (Int) -> Unit
 ) {
-    val density = LocalDensity.current
+    val context = LocalContext.current
     val scrollState = rememberScrollState()
-    val panelMaxHeight = with(density) { panelHeightPx.toDp() }
-    val answerVersions = remember(uiState.result?.id, uiState.result?.answerVersions, uiState.result?.answer) {
-        uiState.result?.displayedAnswerVersions().orEmpty()
-    }
-    var currentVersionIndex by remember(uiState.result?.id, answerVersions.size) {
-        mutableStateOf((answerVersions.size - 1).coerceAtLeast(0))
-    }
-    var switchDirection by remember { mutableStateOf(AnswerSwitchDirection.NONE) }
-    val displayedAnswer = when {
-        uiState.working -> uiState.liveAnswerText
-        answerVersions.isNotEmpty() -> answerVersions.getOrNull(currentVersionIndex)?.text.orEmpty()
-        else -> uiState.result?.latestAnswerText().orEmpty()
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Transparent)
-    ) {
-        var closeRequested by remember { mutableStateOf(false) }
-
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(panelMaxHeight)
-                .align(Alignment.BottomCenter),
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            tonalElevation = 8.dp
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            ) {
-                SheetTitleRow(
-                    title = { Text("Hanako") },
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 20.dp, top = 16.dp, end = 12.dp, bottom = 8.dp),
-                    onClose = {
-                        if (closeRequested) return@SheetTitleRow
-                        closeRequested = true
-                        onClose()
-                    }
-                )
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scrollState)
-                        .padding(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    ResultImageCard(uiState)
-                    if (uiState.settings.processingRoute == ProcessingRoute.OCR_THEN_LLM) {
-                        OcrResultCard(uiState)
-                    }
-                    AnswerResultCard(
-                        answerText = displayedAnswer,
-                        versionCount = answerVersions.size,
-                        currentVersionIndex = currentVersionIndex,
-                        switchDirection = switchDirection,
-                        working = uiState.working,
-                        searchStatus = searchStatusText(uiState.result?.events.orEmpty()),
-                        onPreviousVersion = {
-                            if (currentVersionIndex > 0) {
-                                switchDirection = AnswerSwitchDirection.PREVIOUS
-                                currentVersionIndex -= 1
-                            }
-                        },
-                        onNextVersion = {
-                            if (currentVersionIndex < answerVersions.lastIndex) {
-                                switchDirection = AnswerSwitchDirection.NEXT
-                                currentVersionIndex += 1
-                            }
-                        },
-                        onRegenerate = onRegenerate
-                    )
-                    uiState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                }
-            }
-        }
-
-        SideEffect { closeRequested }
-    }
-}
-
-@Composable
-private fun ResultImageCard(uiState: OverlayUiState) {
-    ResultContentCard(title = "原图") {
-        uiState.selectedBitmap?.let { bitmap ->
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp)),
-                contentScale = ContentScale.FillWidth
-            )
+    var streamedAnswer by remember(uiState.result?.id) { mutableStateOf(uiState.working) }
+    var bodyHeight by remember { mutableStateOf(0) }
+    var actionsHeight by remember { mutableStateOf(0) }
+    var composerHeight by remember { mutableStateOf(0) }
+    var showComposer by remember(uiState.result?.id) { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val send = {
+        if (!uiState.working && uiState.followUpDraft.isNotBlank()) {
+            focusManager.clearFocus()
+            keyboard?.hide()
+            showComposer = false
+            onSendFollowUp()
         }
     }
-}
-
-@Composable
-private fun OcrResultCard(uiState: OverlayUiState) {
-    val context = LocalContext.current
-    ResultContentCard(
-        title = "OCR 结果",
-        actions = {
-            if (!uiState.working && uiState.liveOcrText.isNotBlank()) {
-                SmallHeaderAction(
-                    label = "复制原文",
-                    onClick = {
-                        copyToClipboardWithToast(context, "Hanako OCR 原文", uiState.liveOcrText, "已复制 OCR 原文")
-                    }
-                )
-            }
-        }
-    ) {
-        if (uiState.liveOcrText.isBlank() && uiState.working) {
-            LoadingLine("正在识别文字…")
-        } else {
-            val ocrText = uiState.liveOcrText
-            if (ocrText.isNotBlank()) {
-                MarkdownLatexText(
-                    content = ocrText,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            } else {
-                Text("暂无内容")
-            }
-        }
-    }
-}
-
-@Composable
-private fun AnswerResultCard(
-    answerText: String,
-    versionCount: Int,
-    currentVersionIndex: Int,
-    switchDirection: AnswerSwitchDirection,
-    working: Boolean,
-    searchStatus: String?,
-    onPreviousVersion: () -> Unit,
-    onNextVersion: () -> Unit,
-    onRegenerate: () -> Unit
-) {
-    val context = LocalContext.current
-    ResultContentCard(
-        title = "答案",
-        actions = {
-            AnswerActionBar(
-                versionCount = versionCount,
-                currentVersionIndex = currentVersionIndex,
-                canRegenerate = true,
-                regenerating = working,
-                onPreviousVersion = onPreviousVersion,
-                onNextVersion = onNextVersion,
-                onCopy = {
-                    copyToClipboardWithToast(context, "Hanako 原始答案", answerText, "已复制全文")
-                },
-                onRegenerate = onRegenerate
-            )
-        }
-    ) {
-        searchStatus?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        when {
-            working && answerText.isBlank() -> LoadingLine("正在生成答案…")
-            working -> MarkdownLatexText(
-                content = answerText,
-                modifier = Modifier.fillMaxWidth()
-            )
-            answerText.isNotBlank() -> AnimatedAnswerVersionContent(
-                text = answerText,
-                direction = switchDirection
-            ) { currentText ->
-                MarkdownLatexText(
-                    content = currentText,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-            else -> Text("暂无内容")
-        }
-    }
-}
-
-@Composable
-private fun SmallHeaderAction(
-    label: String,
-    active: Boolean = false,
-    onClick: () -> Unit
-) {
-    Text(
-        text = label,
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(
-                if (active) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerHighest
-                }
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        style = MaterialTheme.typography.labelMedium,
-        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    )
-}
-
-private fun searchStatusText(events: List<ProcessingEvent>): String? {
-    val searchEvent = events.lastOrNull { it.title == "正在联网搜索" || it.title == "联网搜索完成" } ?: return null
-    val keyword = Regex("关键词：([^，]+)").find(searchEvent.detail)?.groupValues?.getOrNull(1)?.trim().orEmpty()
-    if (keyword.isBlank()) return null
-    val count = Regex("获取\\s*(\\d+)\\s*条结果").find(searchEvent.detail)?.groupValues?.getOrNull(1)
-    return if (count.isNullOrBlank()) {
-        "已搜索 $keyword"
+    val answer = if (uiState.working && !uiState.sendingFollowUp) {
+        uiState.liveAnswerText
     } else {
-        "已搜索 $keyword（共${count}条结果）"
+        uiState.result?.latestAnswerText().orEmpty()
+            .ifBlank { uiState.result?.automationAction?.text.orEmpty() }
     }
-}
+    val revealed = rememberStreamingReveal(answer, streamedAnswer && uiState.settings.floatingWindow.typewriterEnabled)
+    val lastFollowUp = uiState.result?.followUpTurns?.lastOrNull()
+    val followUpAnswer = lastFollowUp?.pendingAssistantText.orEmpty()
+        .ifBlank { lastFollowUp?.currentAssistantText().orEmpty() }
+    var streamedReply by remember(lastFollowUp?.id) { mutableStateOf(uiState.sendingFollowUp) }
+    val revealedReply = key(lastFollowUp?.id) {
+        rememberStreamingReveal(followUpAnswer, streamedReply && uiState.settings.floatingWindow.typewriterEnabled)
+    }
+    val copyText = followUpAnswer.ifBlank { answer }
+    val idle = !uiState.working && !uiState.capturing && uiState.result?.id !in uiState.busyHistoryIds
+    val actionsVisible = !uiState.working && !uiState.capturing && revealed == answer && revealedReply == followUpAnswer
+    SideEffect {
+        if (uiState.working) streamedAnswer = true
+        if (uiState.sendingFollowUp) streamedReply = true
+        if (bodyHeight > 0) {
+            onContentHeightChanged(bodyHeight + (if (actionsVisible) actionsHeight else 0) + (if (showComposer) composerHeight else 0))
+        }
+    }
+    LaunchedEffect(showComposer) {
+        if (showComposer) {
+            withFrameNanos { }
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
+    }
+    LaunchedEffect(uiState.result?.followUpTurns?.size, uiState.sendingFollowUp) {
+        if (uiState.sendingFollowUp) {
+            withFrameNanos { }
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
+    }
 
-@Composable
-private fun LoadingLine(text: String) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        CircularProgressIndicator(strokeWidth = 2.dp)
-        Text(text)
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f).verticalScroll(scrollState)) {
+            Column(
+                Modifier.fillMaxWidth().onSizeChanged { bodyHeight = it.height }
+                    .padding(start = 10.5.dp, end = 10.5.dp, top = 9.dp, bottom = 2.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                when {
+                    answer.isNotBlank() -> MarkdownLatexText(revealed, Modifier.fillMaxWidth())
+                    uiState.working -> Text("正在思考…", style = MaterialTheme.typography.bodyMedium)
+                    uiState.error == null -> Text("暂无答案", style = MaterialTheme.typography.bodyMedium)
+                }
+                uiState.result?.followUpTurns?.forEachIndexed { index, turn ->
+                    key(turn.id) {
+                        Text("追问：${turn.userText}", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f))
+                        val text = turn.pendingAssistantText.ifBlank { turn.currentAssistantText() }
+                        val sending = uiState.sendingFollowUp && index == uiState.result.followUpTurns.lastIndex
+                        val reply = if (turn.id == lastFollowUp?.id) revealedReply else text
+                        if (sending && text.isBlank()) Text("正在思考…")
+                        else if (text.isNotBlank()) MarkdownLatexText(reply, Modifier.fillMaxWidth())
+                        turn.errorMessage?.takeIf { it != uiState.error }?.let {
+                            Text(it, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+                uiState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        }
+        if (showComposer) {
+            Box(Modifier.fillMaxWidth().onSizeChanged { composerHeight = it.height }
+                .padding(horizontal = 9.dp, vertical = 4.dp)) {
+                OutlinedTextField(
+                    value = uiState.followUpDraft,
+                    onValueChange = onDraftChange,
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                    placeholder = { Text("继续问…") },
+                    maxLines = 3,
+                    enabled = !uiState.working,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { send() }),
+                    trailingIcon = {
+                        IconButton(onClick = { send() }, enabled = !uiState.working && uiState.followUpDraft.isNotBlank()) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送追问", modifier = Modifier.size(18.dp))
+                        }
+                    }
+                )
+            }
+        }
+        if (actionsVisible) {
+            val appearance = remember { Animatable(0f) }
+            LaunchedEffect(Unit) { appearance.animateTo(1f, tween(160)) }
+            Row(
+                Modifier.fillMaxWidth().onSizeChanged { actionsHeight = it.height }
+                    .alpha(appearance.value)
+                    .padding(end = 8.dp, bottom = 2.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                IconButton(
+                    onClick = { copyToClipboardWithToast(context, "Hanako 答案", unwrapCopyMarkers(copyText), "已复制答案") },
+                    enabled = copyText.isNotBlank(),
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "复制答案", modifier = Modifier.size(18.dp))
+                }
+                IconButton(
+                    onClick = {
+                        showComposer = false
+                        focusManager.clearFocus()
+                        keyboard?.hide()
+                        if (lastFollowUp != null) onRetryFollowUp() else onRegenerate()
+                    },
+                    enabled = idle,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = "重试", modifier = Modifier.size(20.dp))
+                }
+                IconButton(
+                    onClick = {
+                        showComposer = !showComposer
+                        if (!showComposer) { focusManager.clearFocus(); keyboard?.hide() }
+                    },
+                    enabled = idle && uiState.result != null && uiState.result.automationAction == null,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(painterResource(R.drawable.ic_bubble_answer),
+                        contentDescription = if (showComposer) "收起追问" else "追问",
+                        modifier = Modifier.size(20.dp))
+                }
+            }
+        }
     }
 }

@@ -1,7 +1,6 @@
 package `fun`.kirari.hanako.core.network
 
 import `fun`.kirari.hanako.core.data.ModelProviderConfig
-import `fun`.kirari.hanako.core.data.SettingsStore
 import `fun`.kirari.hanako.core.debug.AppDebugLogStore
 import `fun`.kirari.llm.core.ChatMessage
 import `fun`.kirari.llm.core.LlmClient
@@ -13,13 +12,11 @@ import kotlinx.serialization.json.Json
 
 internal class UnifiedLLMClient(
     private val clientProvider: NetworkClientProvider = NetworkClientProvider(),
-    private val kirariAuthManager: KirariAuthManager? = null,
-    private val settingsStore: SettingsStore? = null,
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) {
     private val tag = "HanakoUnifiedLLM"
     private val coreClient = LlmClient(clientProvider, HanakoLlmLogger)
-    private val providerResolver = ProviderConfigResolver(kirariAuthManager, settingsStore)
+    private val providerResolver = ProviderConfigResolver()
 
     suspend fun stream(
         provider: ModelProviderConfig,
@@ -32,7 +29,7 @@ internal class UnifiedLLMClient(
         trustAllHttpsCertificates: Boolean = false
     ): Flow<LlmEvent> {
         AppDebugLogStore.i(tag, "stream provider=${provider.kind} model=$model imageCount=${imagesBase64.size} hasTools=${tools != null} trustAllHttps=$trustAllHttpsCertificates")
-        val resolvedProvider = providerResolver.resolve(provider, trustAllHttpsCertificates)
+        val resolvedProvider = providerResolver.resolve(provider)
 
         return coreClient.stream(
             StreamRequest(
@@ -42,6 +39,7 @@ internal class UnifiedLLMClient(
                 userPrompt = userPrompt,
                 imagesBase64 = imagesBase64,
                 tools = tools,
+                reasoningEffort = provider.reasoningEffort,
                 firstDeltaTimeoutMillis = firstDeltaTimeoutMillis,
                 trustAllHttpsCertificates = trustAllHttpsCertificates
             )
@@ -57,13 +55,14 @@ internal class UnifiedLLMClient(
         trustAllHttpsCertificates: Boolean = false
     ): Flow<LlmEvent> {
         AppDebugLogStore.i(tag, "streamMessages provider=${provider.kind} model=$model messageCount=${messages.size} hasTools=${tools != null} trustAllHttps=$trustAllHttpsCertificates")
-        val resolvedProvider = providerResolver.resolve(provider, trustAllHttpsCertificates)
+        val resolvedProvider = providerResolver.resolve(provider)
         return coreClient.stream(
             StreamRequest(
                 provider = resolvedProvider,
                 model = model,
                 messages = messages,
                 tools = tools,
+                reasoningEffort = provider.reasoningEffort,
                 firstDeltaTimeoutMillis = firstDeltaTimeoutMillis,
                 trustAllHttpsCertificates = trustAllHttpsCertificates
             )

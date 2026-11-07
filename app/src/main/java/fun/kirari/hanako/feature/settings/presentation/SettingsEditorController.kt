@@ -1,13 +1,8 @@
 package `fun`.kirari.hanako.feature.settings.presentation
 
-import `fun`.kirari.hanako.feature.settings.presentation.ProviderMetaState
-
-import `fun`.kirari.hanako.core.data.AppSettings
 import `fun`.kirari.hanako.core.data.AssistantPreset
 import `fun`.kirari.hanako.core.data.AutomationSettings
-import `fun`.kirari.hanako.core.data.KIRARI_PROVIDER_ID
-import `fun`.kirari.hanako.core.data.KirariModelTag
-import `fun`.kirari.hanako.core.data.KirariSettings
+import `fun`.kirari.hanako.core.data.FloatingWindowSettings
 import `fun`.kirari.hanako.core.data.ModelPurpose
 import `fun`.kirari.hanako.core.data.ModelProviderConfig
 import `fun`.kirari.hanako.core.data.ModelSelection
@@ -16,41 +11,23 @@ import `fun`.kirari.hanako.core.data.ScreenCaptureMethod
 import `fun`.kirari.hanako.core.data.SettingsRepository
 import `fun`.kirari.hanako.core.data.WebSearchSettings
 import `fun`.kirari.hanako.core.data.availableProviders
-import `fun`.kirari.hanako.core.data.creatableProviderKinds
 import `fun`.kirari.hanako.core.data.defaultAssistant
 import `fun`.kirari.hanako.core.data.defaultProvider
-import `fun`.kirari.hanako.core.data.isProtectedKirariProvider
 import `fun`.kirari.hanako.core.data.modelSelectionFor
-import `fun`.kirari.hanako.core.data.toKirariModelTag
-import `fun`.kirari.hanako.core.debug.AppDebugLogStore
-import `fun`.kirari.llm.core.ProviderKind
-import `fun`.kirari.llm.core.RemoteModelOption
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
 
 internal class SettingsEditorController(
     private val scope: CoroutineScope,
-    private val repository: SettingsRepository,
-    private val providerMetaState: StateFlow<ProviderMetaState>
+    private val repository: SettingsRepository
 ) {
-    private val tag = "HanakoSettingsEditor"
 
     fun updateProvider(provider: ModelProviderConfig) {
-        if (isProtectedKirariProvider(provider.id)) return
-        val sanitizedProvider = if (provider.kind in creatableProviderKinds()) {
-            provider
-        } else {
-            provider.copy(
-                kind = ProviderKind.OPENAI_COMPATIBLE,
-                baseUrl = "https://api.openai.com/v1"
-            )
-        }
         scope.launch {
             repository.update { current ->
                 current.copy(
-                    providers = current.providers.map { if (it.id == provider.id) sanitizedProvider else it }
+                    providers = current.providers.map { if (it.id == provider.id) provider else it }
                 )
             }
         }
@@ -75,7 +52,6 @@ internal class SettingsEditorController(
     }
 
     fun deleteProvider(providerId: String) {
-        if (isProtectedKirariProvider(providerId)) return
         scope.launch {
             repository.update { current ->
                 val remaining = current.providers.filterNot { it.id == providerId }
@@ -161,6 +137,12 @@ internal class SettingsEditorController(
         }
     }
 
+    fun updateFloatingWindowSettings(settings: FloatingWindowSettings) {
+        scope.launch {
+            repository.update { it.copy(floatingWindow = settings.normalized()) }
+        }
+    }
+
     fun updateModelSelection(purpose: ModelPurpose, selection: ModelSelection) =
         repository.updateModelSelection(scope, purpose, selection)
 
@@ -196,44 +178,10 @@ internal class SettingsEditorController(
         }
     }
 
-    fun updateKirariSettings(transform: (KirariSettings) -> KirariSettings) {
-        scope.launch {
-            repository.update { current ->
-                val updatedSettings = current.copy(kirari = transform(current.kirari))
-                AppDebugLogStore.i(tag, "updateKirariSettings serverUrl=${updatedSettings.kirari.serverUrl}")
-                updatedSettings
-            }
-        }
-    }
-
     fun updateWebSearchSettings(transform: (WebSearchSettings) -> WebSearchSettings) {
         scope.launch {
             repository.update { current ->
                 current.copy(webSearch = transform(current.webSearch))
-            }
-        }
-    }
-
-    fun shouldSuggestKirariAutoSetup(settings: AppSettings, providerMetaState: ProviderMetaState): Boolean {
-        val expected = expectedKirariSelections(providerMetaState.models)
-        if (expected.size != 3) {
-            return false
-        }
-        return expected.any { (purpose, selection) -> settings.modelSelectionFor(purpose) != selection }
-    }
-
-    fun applyKirariAutoSetup() {
-        val expected = expectedKirariSelections(providerMetaState.value.models)
-        if (expected.size != 3) {
-            return
-        }
-        scope.launch {
-            repository.update { current ->
-                current.copy(
-                    textModelSelection = expected[ModelPurpose.TEXT] ?: current.textModelSelection,
-                    ocrModelSelection = expected[ModelPurpose.OCR] ?: current.ocrModelSelection,
-                    visionModelSelection = expected[ModelPurpose.VISION] ?: current.visionModelSelection
-                )
             }
         }
     }
@@ -251,17 +199,4 @@ internal class SettingsEditorController(
         }
     }
 
-    private fun expectedKirariSelections(models: List<RemoteModelOption>): Map<ModelPurpose, ModelSelection> {
-        val byTag = models.mapNotNull { option ->
-            option.tag?.toKirariModelTag()?.let { tag -> tag to option }
-        }.toMap()
-        val expected = linkedMapOf<ModelPurpose, ModelSelection>()
-        byTag[KirariModelTag.TEXT]?.let { expected[ModelPurpose.TEXT] = ModelSelection(KIRARI_PROVIDER_ID, it.id) }
-        byTag[KirariModelTag.OCR]?.let { expected[ModelPurpose.OCR] = ModelSelection(KIRARI_PROVIDER_ID, it.id) }
-        byTag[KirariModelTag.MULTIMODAL]?.let { expected[ModelPurpose.VISION] = ModelSelection(KIRARI_PROVIDER_ID, it.id) }
-        if (expected.size != 3) {
-            return emptyMap()
-        }
-        return expected
-    }
 }

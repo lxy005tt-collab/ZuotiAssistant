@@ -29,8 +29,7 @@ internal fun CropHeaderRow(
     switchDirection: AssistantSwitchDirection,
     onSelectPrevious: () -> Unit,
     onSelectNext: () -> Unit,
-    onOpenPicker: () -> Unit,
-    onClose: () -> Unit
+    onOpenPicker: () -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -38,8 +37,7 @@ internal fun CropHeaderRow(
     ) {
         Box(
             modifier = Modifier
-                .weight(1f)
-                .padding(end = 16.dp),
+                .weight(1f),
             contentAlignment = Alignment.CenterStart
         ) {
             AssistantSwitcher(
@@ -50,12 +48,6 @@ internal fun CropHeaderRow(
                 onSelectNext = onSelectNext,
                 onOpenPicker = onOpenPicker
             )
-        }
-        IconButton(
-            onClick = onClose,
-            modifier = Modifier.size(36.dp)
-        ) {
-            Text("×", style = MaterialTheme.typography.titleLarge)
         }
     }
 }
@@ -70,7 +62,7 @@ private fun AssistantSwitcher(
     onOpenPicker: () -> Unit
 ) {
     Row(
-        modifier = Modifier.wrapContentWidth(),
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -79,7 +71,7 @@ private fun AssistantSwitcher(
         }
         Box(
             modifier = Modifier
-                .width(168.dp)
+                .weight(1f)
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainer)
                 .clickable(onClick = onOpenPicker)
@@ -113,7 +105,7 @@ private fun SwitchArrowButton(
 ) {
     Surface(
         onClick = onClick,
-        modifier = Modifier.size(width = 36.dp, height = 36.dp),
+        modifier = Modifier.size(48.dp),
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceContainer
     ) {

@@ -19,5 +19,10 @@
 local.properties
 keystore.properties
 /release.jks
+*.jks
+*.keystore
+.env
+.env.*
+!.env.example
 # 开发计划文档仅供本地协作，不需要同步
 docs/*.md

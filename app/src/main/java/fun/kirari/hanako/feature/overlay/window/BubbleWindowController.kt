@@ -1,613 +1,315 @@
 package `fun`.kirari.hanako.feature.overlay.window
 
-import `fun`.kirari.hanako.platform.capture.CaptureLaunchMode
-
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
-import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.PixelFormat
-import android.graphics.PorterDuff
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.util.DisplayMetrics
 import android.view.Gravity
-import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
+import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.ProgressBar
-import android.widget.TextView
-import androidx.core.content.ContextCompat
-import `fun`.kirari.hanako.feature.overlay.window.BubbleRenderer
-import `fun`.kirari.hanako.feature.overlay.state.BubbleState
-import `fun`.kirari.hanako.core.data.BubbleAppearanceSettings
-import `fun`.kirari.hanako.core.debug.AppDebugLogStore
-import `fun`.kirari.hanako.feature.overlay.window.AntiScreenshotHelper
-import `fun`.kirari.hanako.feature.overlay.window.overlayWindowType
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import `fun`.kirari.hanako.core.data.FloatingWindowSettings
+import `fun`.kirari.hanako.feature.overlay.state.OverlayUiState
 import kotlin.math.roundToInt
 
+/** The controls and every expanded sheet share this single native overlay window. */
 internal class BubbleWindowController(
     private val context: Context,
     private val windowManager: WindowManager,
-    private val onSingleTap: () -> Unit,
-    private val onDoubleTap: () -> Unit,
-    private val onLongPress: () -> Unit,
-    private val onLongPressHaptic: () -> Unit,
-    private val isStaticModeEnabled: () -> Boolean,
-    private val bubbleAppearanceSettings: () -> BubbleAppearanceSettings
+    private val lifecycleOwner: LifecycleOwner,
+    private val viewModelStoreOwner: ViewModelStoreOwner,
+    private val savedStateRegistryOwner: SavedStateRegistryOwner,
+    private val onSettingsTap: () -> Unit,
+    private val onCaptureTap: () -> Unit,
+    private val floatingWindowSettings: () -> FloatingWindowSettings,
+    private val onOutsideTap: () -> Unit,
+    private val onConfigurationUpdate: () -> Unit
 ) {
-    private val logTag = "HanakoBubbleWindow"
-    private var bubbleView: FrameLayout? = null
-    private var surfaceView: FrameLayout? = null
-    private var shadowView: View? = null
-    private var iconView: ImageView? = null
-    private var textView: TextView? = null
-    private var spinnerView: ProgressBar? = null
-    private var colorAnimator: ValueAnimator? = null
-    private var currentParams: WindowManager.LayoutParams? = null
-    private var countView: TextView? = null
+    private val density = context.resources.displayMetrics.density
+    private fun dp(value: Int) = (value * density).roundToInt()
+    private fun cardDp(value: Int) = (value * density * floatingWindowSettings().sizeScale).roundToInt()
+    private val backgroundAlpha get() = (floatingWindowSettings().backgroundOpacity * 255).roundToInt()
+    private var root: FrameLayout? = null
+    private var controls: DualBubbleView? = null
+    private var params: WindowManager.LayoutParams? = null
+    private var panel: View? = null
+    private var panelWidth = 0
+    private var panelHeight = 0
+    private var panelArea: CardBounds? = null
+    private var anchorX = dp(12)
+    private var anchorY = dp(120)
+    private var dragStartX = 0
+    private var dragStartY = 0
+    private var boundsAnimator: ValueAnimator? = null
+    private var closing = false
+    private var targetBounds: CardBounds? = null
+    private var appliedAppearance: FloatingWindowSettings? = null
+    val headerHeight: Int get() = controls?.desiredHeight ?: cardDp(60)
+    private val cardBackground = GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        intArrayOf(Color.WHITE, Color.rgb(246, 250, 255))
+    ).apply {
+        cornerRadius = cardDp(24).toFloat()
+        alpha = backgroundAlpha
+        setStroke(dp(1), Color.argb(36, 70, 101, 139))
+    }
 
     fun show() {
-        if (bubbleView != null) return
-        val density = context.resources.displayMetrics.density
-        val initialSettings = bubbleAppearanceSettings()
-        // 初始尺寸按 Idle 外观计算，随后的 update(Idle) 会得到同样的结果，不会产生跳动。
-        val initialLayout = resolveLayout(
-            appearance = BubbleRenderer.render(
-                state = BubbleState.Idle,
-                launchMode = CaptureLaunchMode.NORMAL,
-                context = context,
-                staticModeEnabled = isStaticModeEnabled()
-            ),
-            settings = initialSettings,
-            text = null
-        )
-        val surfaceSizePx = initialLayout.surfaceWidthPx
-        val iconSizePx = (initialSettings.bubbleDiameterDp * density * 0.5f).roundToInt()
-        val spinnerSizePx = (initialSettings.spinnerDiameterDp * density).roundToInt()
-        val letterSizePx = initialLayout.letterLayerWidthPx
-        val params = WindowManager.LayoutParams(
-            initialLayout.windowWidthPx,
-            initialLayout.windowHeightPx,
-            overlayWindowType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.START or Gravity.TOP
-            x = 32
-            y = 360
+        if (root != null) return
+        val appearance = floatingWindowSettings()
+        val header = DualBubbleView(context, appearance.sizeScale, onSettingsTap, onCaptureTap,
+            onDragStart = {
+                dragStartX = (params?.x ?: anchorX) + ((params?.width ?: 0) - (controls?.desiredWidth ?: 0)) / 2
+                dragStartY = params?.y ?: anchorY
+            },
+            onDrag = { dx, dy ->
+                anchorX = dragStartX + dx
+                anchorY = dragStartY + dy
+                layoutWindow(animate = false)
+            },
+            onConfigurationUpdate = { onConfigurationUpdate(); layoutWindow(animate = false) }).apply {
+            updateAppearance(appearance.sizeScale, appearance.backgroundOpacity)
         }
-        val shadowSizePx = surfaceSizePx + (3f * density).roundToInt()
-        val shadowView = android.view.View(context).apply {
-            layoutParams = FrameLayout.LayoutParams(shadowSizePx, shadowSizePx, Gravity.CENTER)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(android.graphics.Color.parseColor("#20000000"))
+        val host = object : FrameLayout(context) {
+            override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+                if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) {
+                    if (floatingWindowSettings().closeOnOutsideTap) onOutsideTap()
+                    return true
+                }
+                return super.dispatchTouchEvent(event)
             }
-            translationY = 1.5f * density
-            alpha = 0.45f
+        }.apply {
+            // Compose creates its window recomposer from this native root, not from the
+            // nested panel. Bind all owners before this root or any Compose child attaches.
+            setViewTreeLifecycleOwner(lifecycleOwner)
+            setViewTreeViewModelStoreOwner(viewModelStoreOwner)
+            setViewTreeSavedStateRegistryOwner(savedStateRegistryOwner)
         }
-        val countSizePx = (18f * density).roundToInt()
-        val countView = TextView(context).apply {
-            layoutParams = FrameLayout.LayoutParams(countSizePx, countSizePx).apply {
-                gravity = Gravity.TOP or Gravity.END
-                topMargin = (2f * density).roundToInt()
-                marginEnd = (2f * density).roundToInt()
-            }
-            gravity = Gravity.CENTER
-            textSize = 10f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setTextColor(android.graphics.Color.WHITE)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(android.graphics.Color.parseColor("#BA1A1A"))
-                setStroke((1.5f * density).roundToInt(), android.graphics.Color.WHITE)
-            }
-            visibility = View.GONE
+        controls = header
+        root = host
+        host.addView(header, FrameLayout.LayoutParams(header.desiredWidth, header.desiredHeight))
+        params = WindowManager.LayoutParams(header.desiredWidth, header.desiredHeight, overlayWindowType(),
+            windowFlags(expanded = false), PixelFormat.TRANSLUCENT).apply {
+            gravity = Gravity.TOP or Gravity.LEFT
+            x = anchorX
+            y = anchorY
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            if (Build.VERSION.SDK_INT >= 30) setFitInsetsTypes(0)
         }
-        val spinner = ProgressBar(context, null, android.R.attr.progressBarStyleSmall).apply {
-            layoutParams = FrameLayout.LayoutParams(spinnerSizePx, spinnerSizePx, Gravity.CENTER)
-            isIndeterminate = true
-            visibility = View.GONE
-            alpha = 0f
-        }
-        val icon = ImageView(context).apply {
-            layoutParams = FrameLayout.LayoutParams(iconSizePx, iconSizePx, Gravity.CENTER)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-        }
-        val text = TextView(context).apply {
-            layoutParams = FrameLayout.LayoutParams(letterSizePx, letterSizePx, Gravity.CENTER)
-            gravity = Gravity.CENTER
-            textSize = initialSettings.letterTextSizeDp
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            includeFontPadding = false
-            visibility = View.GONE
-        }
-        val surface = FrameLayout(context).apply {
-            layoutParams = FrameLayout.LayoutParams(surfaceSizePx, surfaceSizePx, Gravity.CENTER)
-            addView(icon)
-        }
-        val view = createBubbleRoot(
-            initialLayout.windowWidthPx,
-            initialLayout.windowHeightPx,
-            params,
-            shadowView,
-            spinner,
-            surface,
-            text,
-            countView
-        )
-        surfaceView = surface
-        this.shadowView = shadowView
-        iconView = icon
-        textView = text
-        spinnerView = spinner
-        this.countView = countView
-        currentParams = params
-        windowManager.addView(view, params)
-        AntiScreenshotHelper.applyTo(view)
-        bubbleView = view
-        update(BubbleState.Idle, CaptureLaunchMode.NORMAL)
+        windowManager.addView(host, params)
+        AntiScreenshotHelper.applyTo(host)
+        layoutWindow(animate = false)
     }
 
-    fun update(bubbleState: BubbleState, launchMode: CaptureLaunchMode) {
-        AppDebugLogStore.d(logTag, "update state=${bubbleState::class.simpleName} launchMode=$launchMode")
-        val bubble = surfaceView ?: return
-        val icon = iconView ?: return
-        val text = textView
-        val spinner = spinnerView
-        val settings = if (bubbleState is BubbleState.MenuExpanded) {
-            BubbleAppearanceSettings()
-        } else {
-            bubbleAppearanceSettings()
+    fun showPanel(view: View, width: Int, height: Int, safeArea: CardBounds) {
+        val host = root ?: return
+        if (closing) {
+            cancelBoundsAnimation()
+            closing = false
+            targetBounds = null
         }
-        val appearance = BubbleRenderer.render(
-            state = bubbleState,
-            launchMode = launchMode,
-            context = context,
-            staticModeEnabled = isStaticModeEnabled()
-        )
-        val overallAlpha = (settings.overallOpacity / 100f).coerceIn(0f, 1f)
-        val layout = resolveLayout(appearance, settings, text)
-        updateWindowSize(layout)
-        updateSurfaceSize(bubble, layout, overallAlpha)
-        applySurfaceShape(bubble, appearance, layout)
-        updateShadow(layout)
-        updateIconAndText(icon, text, appearance, settings, overallAlpha, layout)
-        updateSpinner(spinner, appearance, settings, overallAlpha)
-        updateCaptureCount(countView, appearance)
+        if (panel !== view) {
+            panel?.let(host::removeView)
+            (view.parent as? ViewGroup)?.removeView(view)
+            panel = view
+            host.addView(view)
+        }
+        view.alpha = 1f
+        cardBackground.alpha = backgroundAlpha
+        host.background = cardBackground
+        host.elevation = cardDp(8).toFloat()
+        host.clipToOutline = true
+        panelWidth = width
+        panelHeight = height
+        panelArea = safeArea
+        controls?.setExpanded(true)
+        layoutWindow(animate = true)
     }
+
+    fun hidePanel(animate: Boolean = false, onHidden: () -> Unit = {}) {
+        val host = root
+        val header = controls
+        val layout = params
+        val body = panel
+        if (animate && closing) return
+        cancelBoundsAnimation()
+        if (!animate || host == null || header == null || layout == null || body == null ||
+            host.visibility != View.VISIBLE || !host.isAttachedToWindow) {
+            finishHidingPanel()
+            onHidden()
+            return
+        }
+
+        closing = true
+        val from = CardBounds(layout.x, layout.y, layout.x + layout.width, layout.y + layout.height)
+        val anchor = CardBounds(anchorX, anchorY, anchorX + header.desiredWidth, anchorY + header.desiredHeight)
+        val target = placeUnifiedWindow(screenArea(), anchor, header.desiredWidth, header.desiredHeight)
+        // Leave the Compose body at its expanded size. Only the native window clips it;
+        // closing must not reflow Markdown at each narrower animation frame.
+        boundsAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 220L
+            interpolator = PathInterpolator(0.2f, 0f, 0f, 1f)
+            addUpdateListener {
+                val progress = it.animatedValue as Float
+                fun between(start: Int, end: Int) = (start + (end - start) * progress).roundToInt()
+                body.alpha = (1f - progress / .65f).coerceIn(0f, 1f)
+                cardBackground.alpha = (backgroundAlpha * (1f - progress)).roundToInt()
+                host.elevation = cardDp(8) * (1f - progress)
+                header.setCollapseProgress(progress)
+                applyBounds(CardBounds(between(from.left, target.left), between(from.top, target.top),
+                    between(from.right, target.right), between(from.bottom, target.bottom)))
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    boundsAnimator = null
+                    finishHidingPanel()
+                    onHidden()
+                }
+            })
+            start()
+        }
+    }
+
+    private fun finishHidingPanel() {
+        closing = false
+        panel?.alpha = 1f
+        panel?.let { root?.removeView(it) }
+        panel = null
+        panelArea = null
+        root?.apply { background = null; elevation = 0f; clipToOutline = false }
+        cardBackground.alpha = backgroundAlpha
+        controls?.setExpanded(false)
+        targetBounds = null
+        layoutWindow(animate = false)
+    }
+
+    fun update(state: OverlayUiState) {
+        val appearance = state.settings.floatingWindow
+        if (appliedAppearance != appearance) {
+            appliedAppearance = appearance
+            val resized = controls?.updateAppearance(appearance.sizeScale, appearance.backgroundOpacity) == true
+            cardBackground.cornerRadius = cardDp(24).toFloat()
+            if (!closing) cardBackground.alpha = backgroundAlpha
+            if (resized) {
+                targetBounds = null
+                if (panel == null) layoutWindow(animate = false)
+            }
+        }
+        controls?.update(state.working || state.capturing, state.settingsMenuVisible)
+        root?.visibility = if (state.capturing) View.INVISIBLE else View.VISIBLE
+    }
+
+    fun hideForCapture() { root?.visibility = View.INVISIBLE }
 
     fun destroy() {
-        colorAnimator?.cancel()
-        colorAnimator = null
-        bubbleView?.let { runCatching { windowManager.removeView(it) } }
-        bubbleView = null
-        surfaceView = null
-        shadowView = null
-        iconView = null
-        textView = null
-        spinnerView = null
-        countView = null
-        currentParams = null
+        cancelBoundsAnimation()
+        closing = false
+        root?.let { if (it.isAttachedToWindow) windowManager.removeViewImmediate(it) }
+        root = null
+        controls = null
+        panel = null
+        params = null
     }
 
-    /**
-     * 返回气泡中心在屏幕上的坐标，用于菜单定位。
-     */
-    fun getBubbleCenter(): Pair<Int, Int>? {
-        val params = currentParams ?: return null
-        return Pair(params.x + params.width / 2, params.y + params.height / 2)
-    }
-
-    private fun createBubbleRoot(
-        windowWidthPx: Int,
-        windowHeightPx: Int,
-        params: WindowManager.LayoutParams,
-        shadowView: android.view.View,
-        spinner: ProgressBar,
-        surface: FrameLayout,
-        text: TextView,
-        countView: TextView
-    ): FrameLayout {
-        val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
-        return FrameLayout(context).apply {
-            layoutParams = FrameLayout.LayoutParams(windowWidthPx, windowHeightPx)
-            addView(shadowView)
-            addView(spinner)
-            addView(surface)
-            addView(text)
-            addView(countView)
-            var downRawX = 0f
-            var downRawY = 0f
-            var startX = 0
-            var startY = 0
-            var dragging = false
-            var longPressTriggered = false
-            val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
-            val doubleTapTimeout = ViewConfiguration.getDoubleTapTimeout().toLong()
-            var lastTapTime = 0L
-            var doubleTapDetected = false
-
-            val longPressRunnable = Runnable {
-                if (!dragging) {
-                    longPressTriggered = true
-                    performHapticFeedback(
-                        HapticFeedbackConstants.LONG_PRESS,
-                        HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING
-                    )
-                    onLongPressHaptic()
-                    onLongPress()
-                }
-            }
-
-            val doubleTapTimeoutRunnable = Runnable {
-                if (!doubleTapDetected && !longPressTriggered) {
-                    onSingleTap()
-                }
-                doubleTapDetected = false
-            }
-
-            setOnTouchListener { _: View, event: MotionEvent ->
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        downRawX = event.rawX
-                        downRawY = event.rawY
-                        startX = params.x
-                        startY = params.y
-                        dragging = false
-                        longPressTriggered = false
-                        doubleTapDetected = false
-                        removeCallbacks(longPressRunnable)
-                        removeCallbacks(doubleTapTimeoutRunnable)
-                        postDelayed(longPressRunnable, longPressTimeout)
-                        true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val dx = (event.rawX - downRawX).toInt()
-                        val dy = (event.rawY - downRawY).toInt()
-                        if (!dragging && (kotlin.math.abs(dx) > touchSlop || kotlin.math.abs(dy) > touchSlop)) {
-                            dragging = true
-                            removeCallbacks(longPressRunnable)
-                            removeCallbacks(doubleTapTimeoutRunnable)
-                        }
-                        if (dragging) {
-                            params.x = startX + dx
-                            params.y = startY + dy
-                            windowManager.updateViewLayout(this, params)
-                        }
-                        true
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        removeCallbacks(longPressRunnable)
-                        if (!dragging && !longPressTriggered) {
-                            val currentTime = android.os.SystemClock.uptimeMillis()
-                            val timeSinceLastTap = currentTime - lastTapTime
-                            if (timeSinceLastTap < doubleTapTimeout) {
-                                doubleTapDetected = true
-                                removeCallbacks(doubleTapTimeoutRunnable)
-                                onDoubleTap()
-                            } else {
-                                lastTapTime = currentTime
-                                postDelayed(doubleTapTimeoutRunnable, doubleTapTimeout)
-                            }
-                        }
-                        true
-                    }
-                    MotionEvent.ACTION_CANCEL -> {
-                        removeCallbacks(longPressRunnable)
-                        removeCallbacks(doubleTapTimeoutRunnable)
-                        true
-                    }
-                    else -> false
-                }
+    private fun layoutWindow(animate: Boolean) {
+        if (closing) return
+        val host = root ?: return
+        val header = controls ?: return
+        val layout = params ?: return
+        val expanded = panel != null
+        val area = panelArea ?: screenArea()
+        val anchor = CardBounds(anchorX, anchorY, anchorX + header.desiredWidth, anchorY + header.desiredHeight)
+        val width = if (expanded) panelWidth else header.desiredWidth
+        val height = header.desiredHeight + if (expanded) panelHeight + cardDp(8) else 0
+        val target = placeUnifiedWindow(area, anchor, width, height)
+        // Keep the child at its final size while the parent reveals it. This avoids text reflow
+        // and prevents the appearing action row from squeezing the answer during growth.
+        panel?.let { body ->
+            val bodyHeight = (target.height - header.desiredHeight - cardDp(8)).coerceAtLeast(1)
+            val bodyParams = body.layoutParams as? FrameLayout.LayoutParams
+            if (bodyParams == null || bodyParams.width != target.width || bodyParams.height != bodyHeight || bodyParams.topMargin != header.desiredHeight) {
+                body.layoutParams = FrameLayout.LayoutParams(target.width, bodyHeight).apply { topMargin = header.desiredHeight }
             }
         }
-    }
-
-    private fun updateIconAndText(
-        icon: ImageView,
-        text: TextView?,
-        appearance: `fun`.kirari.hanako.feature.overlay.window.BubbleAppearance,
-        settings: BubbleAppearanceSettings,
-        overallAlpha: Float,
-        layout: BubbleLayout
-    ) {
-        val iconSizePx = (
-            settings.bubbleDiameterDp *
-                context.resources.displayMetrics.density *
-                0.5f *
-                appearance.sizeScale
-            ).roundToInt()
-        (icon.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
-            if (params.width != iconSizePx || params.height != iconSizePx) {
-                params.width = iconSizePx
-                params.height = iconSizePx
-                params.gravity = Gravity.CENTER
-                icon.layoutParams = params
-            }
-        }
-        text?.apply {
-            (layoutParams as? FrameLayout.LayoutParams)?.let { params ->
-                if (params.width != layout.letterLayerWidthPx || params.height != layout.letterLayerHeightPx) {
-                    params.width = layout.letterLayerWidthPx
-                    params.height = layout.letterLayerHeightPx
-                    params.gravity = Gravity.CENTER
-                    layoutParams = params
-                    requestLayout()
-                }
-            }
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, layout.letterTextSizePx)
-            // 多选项字母必须单行完整显示，不能被换行或省略号裁切。
-            isSingleLine = true
-            maxLines = 1
-            ellipsize = null
-            alpha = (settings.letterOpacity / 100f).coerceIn(0f, 1f)
-        }
-        if (appearance.letters != null) {
-            text?.text = appearance.letters
-            text?.setTextColor(appearance.iconTint)
-            text?.visibility = View.VISIBLE
-            icon.visibility = View.GONE
-        } else if (!appearance.showIcon) {
-            text?.visibility = View.GONE
-            icon.visibility = View.GONE
-        } else {
-            text?.visibility = View.GONE
-            icon.visibility = View.VISIBLE
-            if (appearance.animateTransitions && icon.tag != appearance.iconRes) {
-                icon.animate().cancel()
-                icon.animate()
-                    .alpha(0f)
-                    .scaleX(0.82f)
-                    .scaleY(0.82f)
-                    .rotation(-45f)
-                    .setDuration(90L)
-                    .setInterpolator(android.view.animation.AccelerateInterpolator())
-                    .withEndAction {
-                        icon.setImageDrawable(ContextCompat.getDrawable(context, appearance.iconRes))
-                        icon.imageTintList = ColorStateList.valueOf(appearance.iconTint)
-                        icon.tag = appearance.iconRes
-                        icon.animate()
-                            .alpha(1f)
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .rotation(0f)
-                            .setDuration(180L)
-                            .setInterpolator(android.view.animation.OvershootInterpolator(1.6f))
-                            .start()
-                    }
-                    .start()
-            } else {
-                icon.setImageDrawable(ContextCompat.getDrawable(context, appearance.iconRes))
-                icon.imageTintList = ColorStateList.valueOf(appearance.iconTint)
-                icon.alpha = 1f
-                icon.scaleX = 1f
-                icon.scaleY = 1f
-            }
-        }
-    }
-
-    private fun updateSpinner(
-        spinner: ProgressBar?,
-        appearance: `fun`.kirari.hanako.feature.overlay.window.BubbleAppearance,
-        settings: BubbleAppearanceSettings,
-        overallAlpha: Float
-    ) {
-        spinner?.apply {
-            (layoutParams as? FrameLayout.LayoutParams)?.let { params ->
-                val spinnerSizePx = (settings.spinnerDiameterDp * context.resources.displayMetrics.density).roundToInt()
-                if (params.width != spinnerSizePx || params.height != spinnerSizePx) {
-                    params.width = spinnerSizePx
-                    params.height = spinnerSizePx
-                    params.gravity = Gravity.CENTER
-                    layoutParams = params
-                    requestLayout()
-                }
-            }
-            val drawable = indeterminateDrawable?.mutate()
-            if (drawable != null) {
-                drawable.setColorFilter(appearance.spinnerColor, PorterDuff.Mode.SRC_IN)
-                indeterminateDrawable = drawable
-            }
-            animate().cancel()
-            if (appearance.showSpinner) {
-                visibility = View.VISIBLE
-                if (appearance.animateTransitions) {
-                    animate().alpha(overallAlpha).setDuration(160L).start()
-                } else {
-                    alpha = overallAlpha
-                }
-            } else {
-                if (appearance.animateTransitions) {
-                    animate()
-                        .alpha(0f)
-                        .setDuration(160L)
-                        .withEndAction { visibility = View.GONE }
-                        .start()
-                } else {
-                    alpha = 0f
-                    visibility = View.GONE
-                }
-            }
-        }
-    }
-
-    /**
-     * 计算当前外观对应的窗口、球体与字母层尺寸。
-     *
-     * 多选项字母时用 [TextView.paint] 实测文字宽度，保证胶囊宽度足够容纳全部选项。
-     */
-    private fun resolveLayout(
-        appearance: `fun`.kirari.hanako.feature.overlay.window.BubbleAppearance,
-        settings: BubbleAppearanceSettings,
-        text: TextView?
-    ): BubbleLayout {
-        val displayMetrics = context.resources.displayMetrics
-        val letterTextSizePx = maxOf(settings.letterTextSizeDp * displayMetrics.scaledDensity, 1f)
-        val letters = appearance.letters
-        val needsTextMeasure = appearance.shape == BubbleShape.ROUNDED_RECT && !letters.isNullOrEmpty()
-        val measured = if (needsTextMeasure && text != null) {
-            measureLetterText(text, letters.orEmpty(), letterTextSizePx)
-        } else {
-            null
-        }
-        return BubbleLayoutCalculator.calculate(
-            BubbleLayoutInput(
-                shape = appearance.shape,
-                letters = letters,
-                sizeScale = appearance.sizeScale,
-                density = displayMetrics.density,
-                screenWidthPx = displayMetrics.widthPixels,
-                bubbleDiameterDp = settings.bubbleDiameterDp,
-                spinnerDiameterDp = settings.spinnerDiameterDp,
-                letterTextSizeDp = settings.letterTextSizeDp,
-                letterTextSizePx = letterTextSizePx,
-                naturalTextWidthPx = measured?.first ?: 0f,
-                naturalTextHeightPx = measured?.second ?: 0f
-            )
-        )
-    }
-
-    /**
-     * 用字母视图自身的 [android.text.TextPaint] 实测文字尺寸，
-     * 这样字重/字体与真正渲染时完全一致。测量后恢复原字号。
-     */
-    private fun measureLetterText(text: TextView, letters: String, textSizePx: Float): Pair<Float, Float> {
-        val paint = text.paint
-        val previousTextSize = paint.textSize
-        paint.textSize = textSizePx
-        val widthPx = paint.measureText(letters)
-        val fontMetrics = paint.fontMetrics
-        val heightPx = fontMetrics.descent - fontMetrics.ascent
-        paint.textSize = previousTextSize
-        return widthPx to heightPx
-    }
-
-    /**
-     * 调整悬浮球窗口尺寸。
-     *
-     * 窗口变宽时以原中心为锚点向两侧扩展，否则气泡会随着窗口向右「滑动」；
-     * 最后把窗口夹回屏幕内，避免多选项胶囊被屏幕边缘裁切。
-     */
-    private fun updateWindowSize(layout: BubbleLayout) {
-        val root = bubbleView ?: return
-        val params = root.layoutParams as? WindowManager.LayoutParams ?: return
-        if (params.width == layout.windowWidthPx && params.height == layout.windowHeightPx) return
-        val centerXPx = params.x + params.width / 2
-        val centerYPx = params.y + params.height / 2
-        params.width = layout.windowWidthPx
-        params.height = layout.windowHeightPx
-        params.x = centerXPx - layout.windowWidthPx / 2
-        params.y = centerYPx - layout.windowHeightPx / 2
-        val displayMetrics = context.resources.displayMetrics
-        val maxXPx = (displayMetrics.widthPixels - layout.windowWidthPx).coerceAtLeast(0)
-        val maxYPx = (displayMetrics.heightPixels - layout.windowHeightPx).coerceAtLeast(0)
-        params.x = params.x.coerceIn(0, maxXPx)
-        params.y = params.y.coerceIn(0, maxYPx)
-        windowManager.updateViewLayout(root, params)
-    }
-
-    private fun updateSurfaceSize(bubble: FrameLayout, layout: BubbleLayout, overallAlpha: Float) {
-        bubble.alpha = overallAlpha
-        val params = bubble.layoutParams as? FrameLayout.LayoutParams ?: return
-        if (params.width == layout.surfaceWidthPx && params.height == layout.surfaceHeightPx) return
-        params.width = layout.surfaceWidthPx
-        params.height = layout.surfaceHeightPx
-        params.gravity = Gravity.CENTER
-        bubble.layoutParams = params
-        bubble.requestLayout()
-    }
-
-    /**
-     * 应用背景形状与颜色：圆形用 [GradientDrawable.OVAL]，
-     * 多选项胶囊用整圆角的 [GradientDrawable.RECTANGLE]。
-     */
-    private fun applySurfaceShape(
-        bubble: FrameLayout,
-        appearance: `fun`.kirari.hanako.feature.overlay.window.BubbleAppearance,
-        layout: BubbleLayout
-    ) {
-        val density = context.resources.displayMetrics.density
-        val existing = bubble.background as? GradientDrawable
-        val drawable = existing ?: GradientDrawable().apply {
-            setStroke((1.5f * density).roundToInt(), android.graphics.Color.WHITE)
-        }
-        val targetShape = if (layout.shape == BubbleShape.ROUNDED_RECT) {
-            GradientDrawable.RECTANGLE
-        } else {
-            GradientDrawable.OVAL
-        }
-        val targetCornerRadius = if (targetShape == GradientDrawable.RECTANGLE) {
-            layout.surfaceHeightPx / 2f
-        } else {
-            0f
-        }
-        if (drawable.shape != targetShape || drawable.cornerRadius != targetCornerRadius) {
-            drawable.shape = targetShape
-            drawable.cornerRadius = targetCornerRadius
-            bubble.background = drawable
-        }
-        val startColor = existing?.color?.defaultColor ?: appearance.backgroundColor
-        colorAnimator?.cancel()
-        if (appearance.animateTransitions) {
-            colorAnimator = ValueAnimator.ofArgb(startColor, appearance.backgroundColor).apply {
-                duration = 220L
-                addUpdateListener { animator ->
-                    drawable.setColor(animator.animatedValue as Int)
-                    bubble.background = drawable
+        val flags = windowFlags(expanded)
+        val flagsChanged = layout.flags != flags
+        layout.flags = flags
+        if (target == targetBounds && !flagsChanged) return
+        targetBounds = target
+        cancelBoundsAnimation()
+        if (animate && expanded && host.visibility == View.VISIBLE && layout.height != target.height) {
+            boundsAnimator = ValueAnimator.ofInt(layout.height, target.height).apply {
+                duration = 150L
+                interpolator = DecelerateInterpolator()
+                addUpdateListener {
+                    val frame = placeUnifiedWindow(area, anchor, target.width, it.animatedValue as Int)
+                    applyBounds(frame)
                 }
                 start()
             }
         } else {
-            drawable.setColor(appearance.backgroundColor)
-            bubble.background = drawable
+            applyBounds(target)
         }
     }
 
-    /**
-     * 阴影跟随球体形状，否则胶囊后面会露出一个圆形阴影。
-     */
-    private fun updateShadow(layout: BubbleLayout) {
-        val shadow = shadowView ?: return
-        val density = context.resources.displayMetrics.density
-        val strokePx = (3f * density).roundToInt()
-        val widthPx = layout.surfaceWidthPx + strokePx
-        val heightPx = layout.surfaceHeightPx + strokePx
-        (shadow.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
-            if (params.width != widthPx || params.height != heightPx) {
-                params.width = widthPx
-                params.height = heightPx
-                params.gravity = Gravity.CENTER
-                shadow.layoutParams = params
+    private fun applyBounds(bounds: CardBounds) {
+        val host = root ?: return
+        val layout = params ?: return
+        controls?.let { header ->
+            val headerParams = header.layoutParams as FrameLayout.LayoutParams
+            if (headerParams.width != bounds.width || headerParams.height != header.desiredHeight) {
+                headerParams.width = bounds.width
+                headerParams.height = header.desiredHeight
+                header.layoutParams = headerParams
             }
         }
-        val drawable = shadow.background as? GradientDrawable ?: return
-        val targetShape = if (layout.shape == BubbleShape.ROUNDED_RECT) {
-            GradientDrawable.RECTANGLE
-        } else {
-            GradientDrawable.OVAL
-        }
-        val targetCornerRadius = if (targetShape == GradientDrawable.RECTANGLE) heightPx / 2f else 0f
-        if (drawable.shape != targetShape || drawable.cornerRadius != targetCornerRadius) {
-            drawable.shape = targetShape
-            drawable.cornerRadius = targetCornerRadius
-            shadow.background = drawable
-        }
+        layout.x = bounds.left
+        layout.y = bounds.top
+        layout.width = bounds.width
+        layout.height = bounds.height
+        if (host.isAttachedToWindow) windowManager.updateViewLayout(host, layout)
     }
 
-    private fun updateCaptureCount(
-        countView: TextView?,
-        appearance: `fun`.kirari.hanako.feature.overlay.window.BubbleAppearance
-    ) {
-        countView?.apply {
-            if (appearance.showCaptureCount) {
-                text = appearance.captureCount.toString()
-                visibility = View.VISIBLE
-            } else {
-                visibility = View.GONE
-            }
+    private fun windowFlags(expanded: Boolean): Int =
+        WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            (if (expanded) WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+
+    private fun cancelBoundsAnimation() {
+        boundsAnimator?.apply {
+            removeAllUpdateListeners()
+            removeAllListeners()
+            cancel()
         }
+        boundsAnimator = null
+    }
+
+    private fun screenArea(): CardBounds {
+        if (Build.VERSION.SDK_INT >= 30) {
+            val metrics = windowManager.currentWindowMetrics
+            val insets = metrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            return CardBounds(metrics.bounds.left + insets.left + dp(4), metrics.bounds.top + insets.top + dp(4),
+                metrics.bounds.right - insets.right - dp(4), metrics.bounds.bottom - insets.bottom - dp(4))
+        }
+        val metrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay.getRealMetrics(metrics)
+        return CardBounds(dp(4), dp(28), metrics.widthPixels - dp(4), metrics.heightPixels - dp(28))
     }
 }

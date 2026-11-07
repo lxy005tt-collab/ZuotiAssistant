@@ -2,7 +2,6 @@ package `fun`.kirari.hanako.feature.settings.ui.provider
 
 import `fun`.kirari.hanako.feature.settings.ui.settings.DeleteConfirmDialog
 
-
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,7 +23,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,20 +31,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.unit.dp
 import `fun`.kirari.hanako.core.data.AppSettings
-import `fun`.kirari.hanako.core.data.KIRARI_PROVIDER_ID
 import `fun`.kirari.hanako.core.data.ModelProviderConfig
 import `fun`.kirari.hanako.core.data.availableProviders
 import `fun`.kirari.hanako.core.data.displayName
-import `fun`.kirari.hanako.core.data.isProtectedKirariProvider
 import `fun`.kirari.hanako.feature.home.presentation.RegisterScrollToTopHandler
 import `fun`.kirari.hanako.feature.settings.presentation.ConnectionTestState
-import `fun`.kirari.hanako.feature.settings.presentation.KirariAccountState
-import `fun`.kirari.hanako.feature.settings.presentation.ProviderMetaState
 import kotlinx.coroutines.launch
 
 @Composable
@@ -117,71 +108,21 @@ fun ProviderSettingsScreen(
 fun ProviderDetailScreen(
     provider: ModelProviderConfig,
     connectionTestState: ConnectionTestState,
-    providerMetaState: ProviderMetaState,
-    kirariAccountState: KirariAccountState,
-    hasKirariClientId: Boolean,
     onUpdateProvider: (ModelProviderConfig) -> Unit,
     onViewModels: () -> Unit,
     onTestConnection: (ModelProviderConfig) -> Unit,
-    onClearConnectionTest: () -> Unit,
-    onLoadProviderMeta: (ModelProviderConfig) -> Unit,
-    onClearProviderMeta: () -> Unit,
-    shouldSuggestKirariAutoSetup: Boolean,
-    onApplyKirariAutoSetup: () -> Unit,
-    onLoginKirari: () -> Unit,
-    onLogoutKirari: () -> Unit
+    onClearConnectionTest: () -> Unit
 ) {
-    val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(provider.id) {
-        onDispose {
-            onClearConnectionTest()
-            onClearProviderMeta()
-        }
+        onDispose { onClearConnectionTest() }
     }
-    LaunchedEffect(provider.id) {
-        if (provider.id == KIRARI_PROVIDER_ID) {
-            onLoadProviderMeta(provider)
-        }
-    }
-    DisposableEffect(lifecycleOwner, provider.id) {
-        if (provider.id != KIRARI_PROVIDER_ID) {
-            onDispose { }
-        } else {
-            val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_RESUME) {
-                    onLoadProviderMeta(provider)
-                }
-            }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose {
-                lifecycleOwner.lifecycle.removeObserver(observer)
-            }
-        }
-    }
-
-    if (provider.id == KIRARI_PROVIDER_ID) {
-        KirariProviderDetailScreen(
-            provider = provider,
-            providerMetaState = providerMetaState,
-            kirariAccountState = kirariAccountState,
-            connectionTestState = connectionTestState,
-            hasKirariClientId = hasKirariClientId,
-            shouldSuggestAutoSetup = shouldSuggestKirariAutoSetup,
-            onApplyAutoSetup = onApplyKirariAutoSetup,
-            onViewModels = onViewModels,
-            onTestConnection = onTestConnection,
-            onLoginKirari = onLoginKirari,
-            onLogoutKirari = onLogoutKirari
-        )
-    } else {
-        GenericProviderDetailScreen(
-            provider = provider,
-            connectionTestState = connectionTestState,
-            onUpdateProvider = onUpdateProvider,
-            onViewModels = onViewModels,
-            onTestConnection = onTestConnection
-        )
-    }
+    GenericProviderDetailScreen(
+        provider = provider,
+        connectionTestState = connectionTestState,
+        onUpdateProvider = onUpdateProvider,
+        onViewModels = onViewModels,
+        onTestConnection = onTestConnection
+    )
 }
 
 @Composable
@@ -193,11 +134,7 @@ private fun ProviderListItem(
     Surface(
         modifier = Modifier.combinedClickable(
             onClick = { onOpenProvider(provider.id) },
-            onLongClick = {
-                if (!isProtectedKirariProvider(provider.id)) {
-                    onRequestDelete(provider.id)
-                }
-            }
+            onLongClick = { onRequestDelete(provider.id) }
         ),
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow

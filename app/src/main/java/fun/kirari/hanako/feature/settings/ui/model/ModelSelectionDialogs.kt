@@ -3,6 +3,7 @@ package `fun`.kirari.hanako.feature.settings.ui.model
 import `fun`.kirari.hanako.feature.settings.ui.provider.ProviderSelectDialog
 
 import android.content.Context
+import `fun`.kirari.hanako.app.ProjectInfo
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
@@ -311,7 +312,7 @@ private fun LiteDownloadDialogHost(
                     context.startActivity(
                         Intent(
                             Intent.ACTION_VIEW,
-                            Uri.parse("https://github.com/zyf2007/HanakoAI")
+                            Uri.parse(ProjectInfo.RELEASES_URL)
                         )
                     )
                 }

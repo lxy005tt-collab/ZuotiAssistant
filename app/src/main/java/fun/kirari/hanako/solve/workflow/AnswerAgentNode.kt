@@ -167,7 +167,8 @@ private class AnswerAgentRuntime(
                 text = pass.text,
                 toolCallId = toolCallId,
                 toolName = toolCall.name,
-                arguments = toolCall.arguments
+                arguments = toolCall.arguments,
+                providerContext = toolCall.providerContext
             )
             messages += toolResultMessage(toolCallId, toolResult.text)
         }

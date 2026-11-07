@@ -1,9 +1,9 @@
 package `fun`.kirari.hanako.feature.home.ui.components
 
 import android.os.Build
+import `fun`.kirari.hanako.app.ProjectInfo
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -52,6 +53,7 @@ fun HeroSection(
     staticModeEnabled: Boolean,
     route: ProcessingRoute,
     onSelectRoute: (ProcessingRoute) -> Unit,
+    onSelectCaptureMethod: (ScreenCaptureMethod) -> Unit,
     onOpenOverlayPermission: () -> Unit,
     onToggleOverlay: (Boolean) -> Unit,
     onStartAutoMode: () -> Unit,
@@ -60,19 +62,21 @@ fun HeroSection(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.95f),
-        tonalElevation = 2.dp
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .animateContentSize()
-                .padding(24.dp),
+                .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             HeroHeader(overlayEnabled = overlayEnabled)
             ProcessingRouteSelector(route = route, onSelectRoute = onSelectRoute)
-            HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f))
+            CaptureMethodSelector(captureMethod, overlayEnabled, onSelectCaptureMethod)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             HeroActions(
                 overlayEnabled = overlayEnabled,
                 hasOverlayPermission = hasOverlayPermission,
@@ -82,6 +86,7 @@ fun HeroSection(
                 onToggleOverlay = onToggleOverlay,
                 onStartAutoMode = onStartAutoMode
             )
+            if (captureMethod == ScreenCaptureMethod.SHIZUKU_ADB) ShizukuStatusCard()
         }
     }
 }
@@ -95,55 +100,50 @@ private fun HeroHeader(overlayEnabled: Boolean) {
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
-                modifier = Modifier.size(52.dp)
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(44.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Default.AutoAwesome,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(26.dp)
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
             Column {
                 Text(
-                    "Hanako AI",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    ProjectInfo.NAME,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     "屏幕智能助理",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
         val statusContainerColor = if (overlayEnabled) {
-            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f)
+            MaterialTheme.colorScheme.primaryContainer
         } else {
-            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.05f)
+            MaterialTheme.colorScheme.surfaceContainerLow
         }
         val statusDotColor = if (overlayEnabled) {
             MaterialTheme.colorScheme.primary
         } else {
-            MaterialTheme.colorScheme.error
+            MaterialTheme.colorScheme.outline
         }
         Surface(
             shape = CircleShape,
-            color = statusContainerColor,
-            border = if (overlayEnabled) {
-                BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
-            } else {
-                null
-            }
+            color = statusContainerColor
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -160,7 +160,8 @@ private fun HeroHeader(overlayEnabled: Boolean) {
                     if (overlayEnabled) "运行中" else "已停止",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = if (overlayEnabled) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -177,19 +178,19 @@ private fun ProcessingRouteSelector(
             "工作模式",
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+            color = MaterialTheme.colorScheme.onSurface
         )
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            ProcessingRoute.entries.forEach { item ->
+            listOf(ProcessingRoute.MULTIMODAL_DIRECT, ProcessingRoute.OCR_THEN_LLM).forEach { item ->
                 val isSelected = route == item
                 ModeSelectorItem(
                     modifier = Modifier.weight(1f),
                     title = if (item == ProcessingRoute.OCR_THEN_LLM) "OCR 模式" else "多模态视觉",
-                    subtitle = if (item == ProcessingRoute.OCR_THEN_LLM) "提取文字后分析" else "直接分析全屏幕",
+                    subtitle = if (item == ProcessingRoute.OCR_THEN_LLM) "提取文字后分析" else "直接看图解题",
                     icon = if (item == ProcessingRoute.OCR_THEN_LLM) Icons.Default.Language else Icons.Default.AutoAwesome,
                     isSelected = isSelected,
                     onClick = { onSelectRoute(item) }
@@ -217,11 +218,11 @@ private fun HeroActions(
         ) {
             OutlinedButton(
                 onClick = onOpenOverlayPermission,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                 shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.25f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             ) {
                 Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -229,20 +230,21 @@ private fun HeroActions(
                 Text("权限设置", fontWeight = FontWeight.Medium)
             }
 
-            val buttonColor = if (overlayEnabled) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onPrimaryContainer
+            val buttonColor = when {
+                !hasOverlayPermission -> MaterialTheme.colorScheme.surfaceContainerHigh
+                overlayEnabled -> MaterialTheme.colorScheme.secondaryContainer
+                else -> MaterialTheme.colorScheme.primary
             }
-            val buttonTextColor = if (overlayEnabled) {
-                MaterialTheme.colorScheme.onError
-            } else {
-                MaterialTheme.colorScheme.primaryContainer
+            val buttonTextColor = when {
+                !hasOverlayPermission -> MaterialTheme.colorScheme.onSurfaceVariant
+                overlayEnabled -> MaterialTheme.colorScheme.onSecondaryContainer
+                else -> MaterialTheme.colorScheme.onPrimary
             }
 
             Surface(
                 modifier = Modifier
                     .weight(1f)
+                    .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .combinedClickable(
                         enabled = hasOverlayPermission,
@@ -301,7 +303,7 @@ private fun HeroHint(
 ) {
     if (!hasOverlayPermission) {
         Surface(
-            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
+            color = MaterialTheme.colorScheme.primaryContainer,
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -314,13 +316,13 @@ private fun HeroHint(
                     Icons.Default.Info,
                     contentDescription = null,
                     modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onErrorContainer
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
                 )
                 Text(
-                    "核心提示：请先开启悬浮窗权限以激活功能",
+                    "请先开启悬浮窗权限，再启动。",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onErrorContainer
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
         }
@@ -331,20 +333,12 @@ private fun HeroHint(
         captureMethod == ScreenCaptureMethod.MEDIA_PROJECTION &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
             !overlayEnabled -> {
-            if (staticModeEnabled) {
-                "提示：静态模式已开启，点击启动直接进入自动模式；悬浮球双击展开快捷菜单；Android 14+ 首次会弹出截屏授权。"
-            } else {
-                "提示：点击启动进入普通模式，长按启动进入自动模式；悬浮球双击展开快捷菜单；Android 14+ 首次会弹出截屏授权。"
-            }
+            "左球打开设置，右球截取整屏并解题。首次启动请在系统弹窗中允许共享整个屏幕。"
         }
         captureMethod == ScreenCaptureMethod.SHIZUKU_ADB && !overlayEnabled ->
-            "提示：当前使用 Shizuku 路线。启动时会先申请 Shizuku 授权，后续截图走 shell screencap；悬浮球双击展开快捷菜单。"
+            "首次启动请允许 Shizuku 授权。左球打开设置，右球截取整屏并解题。"
         !overlayEnabled -> {
-            if (staticModeEnabled) {
-                "静态模式已开启，点击启动直接进入自动模式；悬浮球双击展开快捷菜单。"
-            } else {
-                "点击启动进入普通模式，长按启动进入自动模式；悬浮球双击展开快捷菜单。"
-            }
+            "点击启动悬浮双球：左球打开设置，右球截取整屏并解题。"
         }
         else -> null
     }
@@ -353,7 +347,7 @@ private fun HeroHint(
         Text(
             it,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -369,37 +363,34 @@ fun ModeSelectorItem(
 ) {
     val containerColor by animateColorAsState(
         targetValue = if (isSelected) {
-            MaterialTheme.colorScheme.onPrimaryContainer
+            MaterialTheme.colorScheme.primaryContainer
         } else {
-            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.05f)
+            MaterialTheme.colorScheme.surfaceContainerLow
         },
         label = "containerColor"
     )
     val contentColor by animateColorAsState(
         targetValue = if (isSelected) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
             MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurface
         },
         label = "contentColor"
     )
-    val borderDp by animateDpAsState(
-        targetValue = if (isSelected) 0.dp else 1.dp,
-        label = "borderDp"
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.outlineVariant,
+        label = "borderColor"
     )
 
     Surface(
         modifier = modifier
-            .height(96.dp)
+            .heightIn(min = 104.dp)
             .clip(RoundedCornerShape(18.dp))
             .clickable { onClick() },
         shape = RoundedCornerShape(18.dp),
         color = containerColor,
-        border = if (borderDp > 0.dp) {
-            BorderStroke(borderDp, MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f))
-        } else {
-            null
-        }
+        border = BorderStroke(1.dp, borderColor)
     ) {
         Box(modifier = Modifier.padding(12.dp)) {
             Column(
@@ -409,7 +400,8 @@ fun ModeSelectorItem(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = contentColor.copy(alpha = if (isSelected) 1f else 0.8f),
+                    tint = if (isSelected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -422,8 +414,8 @@ fun ModeSelectorItem(
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = contentColor.copy(alpha = 0.65f),
-                    maxLines = 1
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 

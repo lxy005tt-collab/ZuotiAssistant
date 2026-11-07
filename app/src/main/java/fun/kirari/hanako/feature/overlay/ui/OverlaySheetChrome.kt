@@ -39,7 +39,7 @@ internal fun SheetTitleRow(
         }
         IconButton(
             onClick = onClose,
-            modifier = Modifier.size(36.dp)
+            modifier = Modifier.size(48.dp)
         ) {
             Text("×", style = MaterialTheme.typography.titleLarge)
         }

@@ -1,6 +1,5 @@
 package `fun`.kirari.hanako.feature.overlay.service
 
-import `fun`.kirari.hanako.feature.overlay.window.BubbleMenuController
 import `fun`.kirari.hanako.feature.overlay.window.BubbleWindowController
 import `fun`.kirari.hanako.feature.overlay.window.PanelWindowController
 import `fun`.kirari.hanako.feature.overlay.presentation.OverlayViewModel
@@ -54,7 +53,6 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
     private lateinit var dependencies: OverlayDependencies
     private var bubbleWindowController: BubbleWindowController? = null
     private var panelWindowController: PanelWindowController? = null
-    private var bubbleMenuController: BubbleMenuController? = null
     private var stateObserver: OverlayStateObserver? = null
     private var automationEffectObserver: OverlayAutomationEffectObserver? = null
 
@@ -78,56 +76,25 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             bubbleWindowController = BubbleWindowController(
                 context = this,
                 windowManager = windowManager,
-                onSingleTap = overlayViewModel::handleSingleTap,
-                onDoubleTap = {
-                    val center = bubbleWindowController?.getBubbleCenter()
-                    if (center != null) {
-                        overlayViewModel.handleDoubleTap(center.first, center.second)
-                    } else {
-                        overlayViewModel.handleDoubleTap()
-                    }
-                    showMenuIfExpanded()
-                },
-                onLongPress = {
-                    val center = bubbleWindowController?.getBubbleCenter()
-                    if (center != null) {
-                        overlayViewModel.handleLongPress(center.first, center.second)
-                    } else {
-                        overlayViewModel.handleLongPress()
-                    }
-                    showMenuIfExpanded()
-                },
-                onLongPressHaptic = { vibrateShort() },
-                isStaticModeEnabled = {
-                    overlayViewModel.uiState.value.settings.automation.staticModeEnabled
-                },
-                bubbleAppearanceSettings = {
-                    overlayViewModel.uiState.value.settings.automation.bubbleAppearance
-                }
-            )
-            bubbleMenuController = BubbleMenuController(
-                context = this,
-                windowManager = windowManager,
                 lifecycleOwner = this,
                 viewModelStoreOwner = this,
                 savedStateRegistryOwner = this,
-                overlayViewModel = overlayViewModel,
-                onItemClick = { item ->
-                    overlayViewModel.handleMenuSelect(item)
+                onSettingsTap = ::toggleRotatingSettings,
+                onCaptureTap = ::captureAndSolve,
+                floatingWindowSettings = {
+                    overlayViewModel.uiState.value.settings.floatingWindow
                 },
-                onDismiss = {
-                    overlayViewModel.onMenuDismissed()
-                    bubbleMenuController?.dismiss()
-                }
+                onOutsideTap = { overlayViewModel.closeSheet() },
+                onConfigurationUpdate = { panelWindowController?.reposition() }
             )
             panelWindowController = PanelWindowController(
                 context = this,
                 windowManager = windowManager,
-                scope = serviceScope,
                 lifecycleOwner = this,
                 viewModelStoreOwner = this,
                 savedStateRegistryOwner = this,
-                viewModel = overlayViewModel
+                viewModel = overlayViewModel,
+                floatingWindow = checkNotNull(bubbleWindowController)
             )
             val bubbleController = checkNotNull(bubbleWindowController)
             val panelController = checkNotNull(panelWindowController)
@@ -177,8 +144,6 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
     }
 
     override fun onDestroy() {
-        bubbleMenuController?.dismiss()
-        bubbleMenuController = null
         panelWindowController?.dismiss()
         panelWindowController = null
         bubbleWindowController?.destroy()
@@ -196,13 +161,15 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun showMenuIfExpanded() {
-        val state = overlayViewModel.bubbleStateMachine.currentState
-        if (state is `fun`.kirari.hanako.feature.overlay.state.BubbleState.MenuExpanded) {
-            bubbleMenuController?.show()
-        } else {
-            bubbleMenuController?.dismiss()
-        }
+    private fun toggleRotatingSettings() {
+        overlayViewModel.toggleFloatingSettings()
+    }
+
+    private fun captureAndSolve() {
+        if (overlayViewModel.uiState.value.working || overlayViewModel.uiState.value.capturing) return
+        panelWindowController?.dismiss()
+        bubbleWindowController?.hideForCapture()
+        overlayViewModel.captureAndSolveFullScreen()
     }
 
     private fun observeSkipScreenshotSetting() {

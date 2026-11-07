@@ -1,342 +1,180 @@
 package `fun`.kirari.hanako.feature.overlay.window
 
-import `fun`.kirari.hanako.feature.overlay.state.PanelHandleYOffset
-import `fun`.kirari.hanako.feature.overlay.state.SheetAnimationDurationMs
-import `fun`.kirari.hanako.feature.overlay.state.SheetDockOffset
-
-import `fun`.kirari.hanako.feature.overlay.presentation.OverlayViewModel
-import `fun`.kirari.hanako.feature.overlay.ui.OverlayPanel
-
-import `fun`.kirari.hanako.feature.overlay.state.AutoRunState
-import `fun`.kirari.hanako.platform.capture.CaptureLaunchMode
-import `fun`.kirari.hanako.feature.overlay.state.OverlaySheetMode
-import `fun`.kirari.hanako.feature.overlay.state.OverlayUiState
-
 import android.content.Context
-import android.graphics.Color
-import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
+import android.content.res.Configuration
+import android.os.Build
 import android.util.DisplayMetrics
-import android.util.Log
-import android.view.Gravity
-import android.view.MotionEvent
+import android.view.KeyEvent
+import android.view.WindowInsets
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import androidx.compose.ui.platform.ComposeView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnAttach
+import androidx.core.view.doOnDetach
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import `fun`.kirari.hanako.core.common.easeOutCubic
-import `fun`.kirari.hanako.feature.overlay.window.AntiScreenshotHelper
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import `fun`.kirari.hanako.core.ui.theme.HanakoTheme
+import `fun`.kirari.hanako.feature.overlay.presentation.OverlayViewModel
+import `fun`.kirari.hanako.feature.overlay.state.OverlaySheetMode
+import `fun`.kirari.hanako.feature.overlay.ui.OverlayPanel
 import kotlin.math.roundToInt
 
+/** Expands content inside the controls' window; never creates a second overlay. */
 internal class PanelWindowController(
     private val context: Context,
     private val windowManager: WindowManager,
-    private val scope: CoroutineScope,
     private val lifecycleOwner: LifecycleOwner,
     private val viewModelStoreOwner: ViewModelStoreOwner,
     private val savedStateRegistryOwner: SavedStateRegistryOwner,
-    private val viewModel: OverlayViewModel
+    private val viewModel: OverlayViewModel,
+    private val floatingWindow: BubbleWindowController
 ) {
     private var panelView: FrameLayout? = null
-    private var panelContentView: ComposeView? = null
-    private var panelHandleView: FrameLayout? = null
-    private var panelParams: WindowManager.LayoutParams? = null
-    private var panelHandleParams: WindowManager.LayoutParams? = null
-    private var panelScreenHeightPx: Int = 0
-    private var panelHeightPx: Int = 0
-    private var panelDockHeightPx: Int = 0
-    private var panelCurrentHeightPx: Int = 0
-    private var panelHandleHeightPx: Int = 0
-    private var panelHandleWidthPx: Int = 0
-    private var panelAnimationJob: Job? = null
-    private var panelClosing = false
+    private var mode = OverlaySheetMode.HOME
+    private var closing = false
+    private var keyboardBottom = 0
+    private var contentHeight = 0
+    private var contentKey: String? = null
 
     fun showOrUpdate(mode: OverlaySheetMode) {
-        panelClosing = false
+        this.mode = mode
+        val state = viewModel.uiState.value
+        val key = if (state.settingsMenuVisible) "settings" else "$mode:${state.result?.id}"
+        if (key != contentKey) {
+            contentKey = key
+            contentHeight = 0
+            if (state.settingsMenuVisible) hideKeyboard()
+        }
+        if (closing) {
+            closing = false
+        }
+        if (panelView == null) panelView = createPanelRoot()
+        reposition()
+    }
+
+    fun reposition() {
+        val root = panelView ?: return
+        if (closing) return
+        val density = context.resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).roundToInt()
+        fun cardDp(value: Int) = (value * density * viewModel.uiState.value.settings.floatingWindow.sizeScale).roundToInt()
         val metrics = DisplayMetrics()
         @Suppress("DEPRECATION")
         windowManager.defaultDisplay.getRealMetrics(metrics)
-        val screenHeightPx = metrics.heightPixels
-        val density = context.resources.displayMetrics.density
-        val dockHeightPx = density.times(SheetDockOffset.value).roundToInt()
-        val targetHeightPx = (screenHeightPx * if (mode == OverlaySheetMode.CROP) 0.88f else 0.92f)
-            .roundToInt()
-            .coerceAtLeast(dockHeightPx)
-
-        panelScreenHeightPx = screenHeightPx
-        panelHeightPx = targetHeightPx
-        panelDockHeightPx = dockHeightPx
-        panelHandleHeightPx = (28f * density).roundToInt()
-        panelHandleWidthPx = (88f * density).roundToInt()
-        panelCurrentHeightPx = if (panelView == null) {
-            dockHeightPx
-        } else {
-            panelCurrentHeightPx.coerceIn(dockHeightPx, targetHeightPx)
+        var left = dp(8)
+        var top = dp(32)
+        var right = metrics.widthPixels - dp(8)
+        var bottom = metrics.heightPixels - maxOf(dp(24), keyboardBottom) - dp(8)
+        if (Build.VERSION.SDK_INT >= 30) {
+            val current = windowManager.currentWindowMetrics
+            val insets = current.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            left = current.bounds.left + insets.left + dp(8)
+            top = current.bounds.top + insets.top + dp(8)
+            right = current.bounds.right - insets.right - dp(8)
+            bottom = current.bounds.bottom - maxOf(insets.bottom, keyboardBottom) - dp(8)
         }
-
-        val params = buildPanelParams(screenHeightPx)
-        val handleParams = buildHandleParams(screenHeightPx)
-
-        if (panelView == null) {
-            val composeView = createComposeView(targetHeightPx)
-            val panelRoot = createPanelRoot(composeView, targetHeightPx)
-            val handleView = createPanelHandleView()
-            panelView = panelRoot
-            panelContentView = composeView
-            panelHandleView = handleView
-            windowManager.addView(panelRoot, params)
-            windowManager.addView(handleView, handleParams)
-            AntiScreenshotHelper.applyTo(panelRoot)
-            AntiScreenshotHelper.applyTo(handleView)
-            applyPanelHeight(panelCurrentHeightPx)
-            animatePanelHeight(
-                fromHeightPx = panelCurrentHeightPx,
-                toHeightPx = targetHeightPx
-            )
-        } else {
-            runCatching { windowManager.updateViewLayout(panelView, params) }
-            runCatching { windowManager.updateViewLayout(panelHandleView, handleParams) }
-            applyPanelHeight(panelCurrentHeightPx)
+        val safeArea = CardBounds(left, top, right.coerceAtLeast(left + 1), bottom.coerceAtLeast(top + 1))
+        val state = viewModel.uiState.value
+        val compact = mode == OverlaySheetMode.RESULT || state.settingsMenuVisible
+        val expanded = !compact && state.cardExpanded
+        val desiredHeight = when {
+            state.settingsMenuVisible -> contentHeight.takeIf { it > 0 } ?: cardDp(80)
+            mode == OverlaySheetMode.RESULT -> contentHeight.takeIf { it > 0 } ?: cardDp(36)
+            expanded -> cardDp(560)
+            mode == OverlaySheetMode.HOME -> cardDp(260)
+            mode == OverlaySheetMode.CROP -> cardDp(440)
+            else -> cardDp(380)
         }
+        // Scale the card's footprint, while measured content keeps its readable text size.
+        val maxHeight = minOf(safeArea.height, cardDp(if (compact) 420 else 620)) - floatingWindow.headerHeight - cardDp(8)
+        floatingWindow.showPanel(root,
+            width = cardDp(if (compact) 280 else if (expanded) 384 else 320),
+            height = desiredHeight.coerceIn(1, maxHeight.coerceAtLeast(1)),
+            safeArea = safeArea)
     }
 
     fun hideWithAnimation() {
-        if (panelClosing) return
-        val view = panelView
-        if (view == null) {
-            removePanelNow()
-            return
-        }
-        panelClosing = true
-        animatePanelHeight(
-            fromHeightPx = panelCurrentHeightPx,
-            toHeightPx = 0
-        ) {
-            if (panelView === view) {
-                removePanelNow()
-            }
+        val root = panelView ?: return
+        if (closing) return
+        closing = true
+        hideKeyboard()
+        floatingWindow.hidePanel(animate = true) {
+            if (panelView === root && closing) clearPanelState()
         }
     }
 
     fun dismiss() {
-        panelAnimationJob?.cancel()
-        panelAnimationJob = null
-        panelClosing = false
-        removePanelNow()
+        hideKeyboard()
+        floatingWindow.hidePanel()
+        clearPanelState()
     }
 
-    private fun buildPanelParams(screenHeightPx: Int): WindowManager.LayoutParams {
-        val params = panelParams ?: WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            panelCurrentHeightPx,
-            overlayWindowType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 0
-            y = screenHeightPx - panelCurrentHeightPx
-        }
-        params.width = WindowManager.LayoutParams.MATCH_PARENT
-        params.height = panelCurrentHeightPx
-        params.gravity = Gravity.TOP or Gravity.START
-        params.x = 0
-        params.y = (screenHeightPx - panelCurrentHeightPx).coerceAtLeast(0)
-        panelParams = params
-        return params
-    }
-
-    private fun buildHandleParams(screenHeightPx: Int): WindowManager.LayoutParams {
-        val handleParams = panelHandleParams ?: WindowManager.LayoutParams(
-            panelHandleWidthPx,
-            panelHandleHeightPx,
-            overlayWindowType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            x = 0
-            y = screenHeightPx - panelCurrentHeightPx
-        }
-        handleParams.width = panelHandleWidthPx
-        handleParams.height = panelHandleHeightPx
-        handleParams.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-        handleParams.x = 0
-        handleParams.y = panelHandleY(screenHeightPx, panelCurrentHeightPx)
-        panelHandleParams = handleParams
-        return handleParams
-    }
-
-    private fun createComposeView(targetHeightPx: Int): ComposeView {
-        return ComposeView(context).apply {
-            setViewTreeLifecycleOwner(lifecycleOwner)
-            setViewTreeViewModelStoreOwner(viewModelStoreOwner)
-            setViewTreeSavedStateRegistryOwner(savedStateRegistryOwner)
-            setContent {
-                `fun`.kirari.hanako.core.ui.theme.HanakoTheme {
-                    OverlayPanel(
-                        viewModel = viewModel,
-                        onDismiss = { viewModel.closeSheet() },
-                        panelHeightPx = targetHeightPx
-                    )
-                }
-            }
-        }
-    }
-
-    private fun createPanelRoot(composeView: ComposeView, targetHeightPx: Int): FrameLayout {
-        return FrameLayout(context).apply {
-            setViewTreeLifecycleOwner(lifecycleOwner)
-            setViewTreeViewModelStoreOwner(viewModelStoreOwner)
-            setViewTreeSavedStateRegistryOwner(savedStateRegistryOwner)
-            clipChildren = true
-            clipToPadding = true
-            addView(
-                composeView,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    targetHeightPx
-                )
-            )
-        }
-    }
-
-    private fun createPanelHandleView(): FrameLayout {
-        var dragStartRawY = 0f
-        var dragStartHeightPx = 0
-        return FrameLayout(context).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            addView(
-                FrameLayout(context).apply {
-                    background = GradientDrawable().apply {
-                        setColor(Color.rgb(86, 86, 86))
-                        cornerRadius = 999f * context.resources.displayMetrics.density
-                    }
-                },
-                FrameLayout.LayoutParams(
-                    (68f * context.resources.displayMetrics.density).roundToInt(),
-                    (8f * context.resources.displayMetrics.density).roundToInt()
-                ).apply {
-                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                    topMargin = (10f * context.resources.displayMetrics.density).roundToInt()
-                }
-            )
-            setOnTouchListener { _, event ->
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        panelAnimationJob?.cancel()
-                        dragStartRawY = event.rawY
-                        dragStartHeightPx = panelCurrentHeightPx
-                        true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val nextHeight = (dragStartHeightPx - (event.rawY - dragStartRawY)).roundToInt()
-                        updatePanelHeight(nextHeight)
-                        true
-                    }
-                    MotionEvent.ACTION_UP,
-                    MotionEvent.ACTION_CANCEL -> true
-                    else -> false
-                }
-            }
-        }
-    }
-
-    private fun updatePanelHeight(heightPx: Int) {
-        if (panelDockHeightPx <= 0 || panelHeightPx <= 0) return
-        applyPanelHeight(heightPx.coerceIn(panelDockHeightPx, panelHeightPx))
-    }
-
-    private fun applyPanelHeight(heightPx: Int) {
-        val view = panelView ?: return
-        val params = panelParams
-        val handleParams = panelHandleParams
-        if (panelHeightPx <= 0 || panelScreenHeightPx <= 0) return
-        panelCurrentHeightPx = heightPx.coerceIn(0, panelHeightPx)
-        if (params != null) {
-            params.y = (panelScreenHeightPx - panelCurrentHeightPx).coerceAtLeast(0)
-            params.height = panelCurrentHeightPx.coerceAtLeast(1)
-            runCatching { windowManager.updateViewLayout(view, params) }
-        }
-        if (handleParams != null) {
-            handleParams.y = panelHandleY(panelScreenHeightPx, panelCurrentHeightPx)
-            runCatching { windowManager.updateViewLayout(panelHandleView, handleParams) }
-        }
-    }
-
-    private fun panelHandleY(screenHeightPx: Int, currentHeightPx: Int): Int {
-        val offsetPx = (PanelHandleYOffset.value * context.resources.displayMetrics.density).roundToInt()
-        return (screenHeightPx - currentHeightPx - offsetPx).coerceAtLeast(0)
-    }
-
-    private fun animatePanelHeight(
-        fromHeightPx: Int,
-        toHeightPx: Int,
-        onEnd: (() -> Unit)? = null
-    ) {
-        panelAnimationJob?.cancel()
-        panelAnimationJob = scope.launch {
-            val start = fromHeightPx.coerceIn(0, panelHeightPx.coerceAtLeast(fromHeightPx))
-            val end = toHeightPx.coerceIn(0, panelHeightPx.coerceAtLeast(toHeightPx))
-            animatePanelHeightSegment(
-                startHeightPx = start,
-                endHeightPx = end,
-                durationMs = SheetAnimationDurationMs,
-                easing = ::easeOutCubic
-            )
-            applyPanelHeight(end)
-            onEnd?.invoke()
-        }
-    }
-
-    private suspend fun animatePanelHeightSegment(
-        startHeightPx: Int,
-        endHeightPx: Int,
-        durationMs: Int,
-        easing: (Float) -> Float
-    ) {
-        val startTimeMs = android.os.SystemClock.uptimeMillis()
-        while (currentCoroutineContext().isActive) {
-            val elapsed = android.os.SystemClock.uptimeMillis() - startTimeMs
-            val fraction = (elapsed.toFloat() / durationMs).coerceIn(0f, 1f)
-            val eased = easing(fraction)
-            val height = (startHeightPx + (endHeightPx - startHeightPx) * eased).roundToInt()
-            applyPanelHeight(height)
-            if (fraction >= 1f) break
-            kotlinx.coroutines.delay(16L)
-        }
-        applyPanelHeight(endHeightPx)
-    }
-
-    private fun removePanelNow() {
-        removeWindowImmediately("handle", panelHandleView)
-        removeWindowImmediately("panel", panelView)
-        panelHandleView = null
-        panelContentView = null
+    private fun clearPanelState() {
         panelView = null
-        panelHandleParams = null
-        panelParams = null
-        panelCurrentHeightPx = 0
-        panelClosing = false
+        closing = false
+        keyboardBottom = 0
+        contentHeight = 0
+        contentKey = null
     }
 
-    private fun removeWindowImmediately(name: String, view: android.view.View?) {
-        if (view == null || !view.isAttachedToWindow) return
-        runCatching { windowManager.removeViewImmediate(view) }
-            .onFailure { error -> Log.e(LOG_TAG, "Failed to remove $name window", error) }
+    private fun updateContentHeight(height: Int) {
+        if (height <= 0 || contentHeight == height) return
+        contentHeight = height
+        panelView?.post { reposition() }
     }
 
-    private companion object {
-        const val LOG_TAG = "HanakoPanelWindow"
+    private fun createPanelRoot(): FrameLayout = object : FrameLayout(context) {
+        override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+            if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                viewModel.handlePanelBack()
+                return true
+            }
+            return super.dispatchKeyEvent(event)
+        }
+
+        override fun onConfigurationChanged(newConfig: Configuration) {
+            super.onConfigurationChanged(newConfig)
+            post { reposition() }
+        }
+    }.apply {
+        setViewTreeLifecycleOwner(lifecycleOwner)
+        setViewTreeViewModelStoreOwner(viewModelStoreOwner)
+        setViewTreeSavedStateRegistryOwner(savedStateRegistryOwner)
+        addView(ComposeView(context).apply {
+            setContent {
+                HanakoTheme {
+                    OverlayPanel(viewModel, onDismiss = viewModel::closeSheet,
+                        onContentHeightChanged = ::updateContentHeight)
+                }
+            }
+        }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
+            val ime = if (insets.isVisible(WindowInsetsCompat.Type.ime())) {
+                maxOf(keyboardBottom, insets.getInsets(WindowInsetsCompat.Type.ime()).bottom)
+            } else 0
+            if (keyboardBottom != ime) { keyboardBottom = ime; view.post { reposition() } }
+            insets
+        }
+        if (Build.VERSION.SDK_INT >= 33) {
+            doOnAttach {
+                val dispatcher = findOnBackInvokedDispatcher()
+                val callback = android.window.OnBackInvokedCallback { viewModel.handlePanelBack() }
+                dispatcher?.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback)
+                doOnDetach { dispatcher?.unregisterOnBackInvokedCallback(callback) }
+            }
+        }
+    }
+
+    private fun hideKeyboard() {
+        val token = panelView?.windowToken ?: return
+        (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)?.hideSoftInputFromWindow(token, 0)
+        panelView?.clearFocus()
     }
 }

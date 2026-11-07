@@ -1,0 +1,6 @@
+<resources>
+    <color name="overlay_glass_fill">#E8FAFCFF</color>
+    <color name="overlay_icon">#1B2B41</color>
+    <color name="overlay_orbit_blue">#368DFF</color>
+    <color name="overlay_orbit_light">#B8E6FF</color>
+</resources>

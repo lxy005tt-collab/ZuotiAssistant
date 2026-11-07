@@ -97,9 +97,7 @@ import kotlin.math.abs
 @Composable
 internal fun CropOverlaySheet(
     uiState: OverlayUiState,
-    onClose: () -> Unit,
     onConfirm: (Bitmap) -> Unit,
-    panelHeightPx: Int,
     modelPickerTarget: ModelPurpose?,
     onModelPickerTargetChange: (ModelPurpose?) -> Unit,
     onSelectAssistant: (String) -> Unit,
@@ -115,9 +113,7 @@ internal fun CropOverlaySheet(
     var cropStart by remember { mutableStateOf(Offset.Zero) }
     var cropEnd by remember { mutableStateOf(Offset.Zero) }
     var cropPromptVisible by remember { mutableStateOf(true) }
-    val density = LocalDensity.current
     val selectedAssistant = uiState.settings.assistants.firstOrNull { it.id == uiState.settings.selectedAssistantId }
-    val routeText = if (uiState.settings.processingRoute == ProcessingRoute.OCR_THEN_LLM) "OCR模式" else "多模态模式"
     val ocrProvider = uiState.settings.resolveModelProvider(ModelPurpose.OCR)
     val ocrModel = uiState.settings.resolveModelName(ModelPurpose.OCR)
     val llmPurpose = if (uiState.settings.processingRoute == ProcessingRoute.OCR_THEN_LLM) ModelPurpose.TEXT else ModelPurpose.VISION
@@ -125,7 +121,6 @@ internal fun CropOverlaySheet(
     val llmModel = uiState.settings.resolveModelName(llmPurpose)
     val selectionColor = MaterialTheme.colorScheme.primary
     val hasSelection = cropStart != cropEnd
-    val panelMaxHeight = with(density) { panelHeightPx.toDp() }
     var showAssistantDialog by remember { mutableStateOf(false) }
     var assistantPickerClosing by remember { mutableStateOf(false) }
     var switchDirection by remember { mutableStateOf(AssistantSwitchDirection.PICKER) }
@@ -141,15 +136,13 @@ internal fun CropOverlaySheet(
             .fillMaxSize()
             .background(Color.Transparent)
     ) {
-        var closeRequested by remember { mutableStateOf(false) }
 
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(panelMaxHeight)
+                .fillMaxSize()
                 .align(Alignment.BottomCenter),
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            tonalElevation = 8.dp
+            color = MaterialTheme.colorScheme.surfaceContainerHigh
         ) {
             Column(
                 modifier = Modifier
@@ -159,8 +152,8 @@ internal fun CropOverlaySheet(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(start = 20.dp, top = 52.dp, end = 20.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     CropHeaderRow(
                         assistantName = selectedAssistant?.name.orEmpty(),
@@ -177,11 +170,6 @@ internal fun CropOverlaySheet(
                         onOpenPicker = {
                             assistantPickerClosing = false
                             showAssistantDialog = true
-                        },
-                        onClose = {
-                            if (closeRequested) return@CropHeaderRow
-                            closeRequested = true
-                            onClose()
                         }
                     )
                     ModeModelRow(
@@ -203,7 +191,14 @@ internal fun CropOverlaySheet(
                             .weight(1f)
                             .clip(RoundedCornerShape(24.dp))
                             .background(Color.Black)
-                            .onSizeChanged { size -> canvasSize = size }
+                            .onSizeChanged { size ->
+                                if (bitmap != null && hasSelection && size != canvasSize) {
+                                    val imageSize = IntSize(bitmap.width, bitmap.height)
+                                    cropStart = reprojectCropPoint(cropStart, imageSize, canvasSize, size)
+                                    cropEnd = reprojectCropPoint(cropEnd, imageSize, canvasSize, size)
+                                }
+                                canvasSize = size
+                            }
                     ) {
                         if (bitmap != null) {
                             Image(
@@ -292,20 +287,19 @@ internal fun CropOverlaySheet(
                         Button(
                             onClick = {
                                 bitmap?.let {
-                                    onConfirm(cropBitmap(it, cropStart, cropEnd, canvasSize))
+                                    onConfirm(if (hasSelection) cropBitmap(it, cropStart, cropEnd, canvasSize) else it)
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = bitmap != null && hasSelection
+                            enabled = bitmap != null
                         ) {
-                            Text("确认处理")
+                            Text(if (hasSelection) "搜索选中题目" else "搜索整张截图")
                         }
                     }
                 }
             }
         }
 
-        SideEffect { closeRequested }
     }
 
     if (showAssistantDialog) {

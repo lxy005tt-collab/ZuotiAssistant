@@ -1,196 +1,114 @@
-# Hanako
+# 做题小助手
 
-Hanako 是一个 Android 悬浮窗 AI 客户端，核心用途是截图识题与快速作答。默认助手提示词偏向搜题场景，也可以在应用内改成翻译、总结、阅读辅助等其他用途。
+基于 [HanakoAI](https://github.com/zyf2007/HanakoAI) 改良的 Android 悬浮窗 AI 搜题工具，由 [lxy005tt-collab](https://github.com/lxy005tt-collab) 独立维护。感谢原作者与上游贡献者。
 
-[[Download 0.0.18-alpha](https://github.com/zyf2007/HanakoAI/releases/download/v0.0.18-alpha/app-lite-arm64-v8a-release.apk)]  [[View Release Notes](https://github.com/zyf2007/HanakoAI/releases/tag/v0.0.18-alpha)] [[Telegram](https://t.me/hutao_space)]
+[项目主页](https://github.com/lxy005tt-collab/ZuotiAssistant) · [问题反馈](https://github.com/lxy005tt-collab/ZuotiAssistant/issues) · [发行页面](https://github.com/lxy005tt-collab/ZuotiAssistant/releases) · [来源说明](NOTICE.md) · [AGPL-3.0](LICENSE)
 
-Hanako 把截图、识题、解题、复制/填写这几个步骤压缩到尽可能短：
+左球打开设置，右球截取整屏并交给 AI。答案在同一个悬浮窗口里逐字显示，复制、重试和追问也都可以在小窗中完成。
 
-- 普通模式：点击悬浮球后框选题目区域，发送给 AI，结果面板会展示解题思路、答案和可一键复制的答案片段。
-- 自动模式：主页长按启动后进入自动模式，点击悬浮球会直接截取整屏并交给 AI；选择题答案显示在悬浮球里，填空题或文本答案写入剪贴板。
-- 多图模式：长按悬浮球进入多图截图，每次单击添加一页，再次长按把多张截图一起发送给 AI，双击取消。
+当前源码版本为 `0.1.0-alpha`。本仓库尚未发布正式 APK，可按照下方说明自行构建；发行页面有安装包后再直接下载。本项目不是 HanakoAI 官方发行版。
 
-## 主要功能
+## 相比原版的主要改良
 
-- 悬浮球常驻桌面，支持拖动、点击、双击、长按和扇形快捷菜单。
-- 支持普通模式、自动模式、多图截图模式。
-- 支持两种处理链路：
-  - `OCR_THEN_LLM`：先 OCR 提取文字，再交给文本模型分析，适合纯文本题目。
-  - `MULTIMODAL_DIRECT`：直接把截图交给多模态模型理解，适合含图题目。
-- 支持云端 OCR、文本模型、多模态模型分别选择不同提供方和模型。
-- Full 版本内置 ML Kit 中文 OCR；Lite 版本不包含本地 OCR，建议使用云端 OCR 模型。
-- 普通模式支持 Markdown / LaTeX 渲染、答案版本切换、`[copy:内容]` 一键复制片段。
-- 自动模式支持选择题字母答案显示、文本答案剪贴板写入、完成通知、超时设置和静态振动提示。
-- 支持历史记录查看、删除、重新生成，并把截图保存到应用私有文件。
-- 支持联网搜索工具，由模型按需调用 `web_search` 后把搜索结果注入上下文。
-- 支持应用内检查更新，在首页标题旁提示新版本。
-- 支持 The Kirari Network OIDC 登录和 Kirari LLM 网关，也支持自定义模型提供方。
+- **一体式双球悬浮窗**：入口、设置和答案共用一个窗口，支持拖动；点击外部空白处可收起。
+- **整屏截图直送 AI**：右球一键截图并发送，不再要求框选区域；思考时显示蓝色边缘光效。
+- **精简答案气泡**：白底黑字，随文字增长至高度上限后滚动；输出结束后显示复制、重试、追问三个图标。
+- **模型思考强度**：可选自动、低、中、高等档位，实际可用选项取决于模型和接口。
+- **两种截图方案**：主页直接切换系统录屏或 Shizuku，问号按钮说明各自优缺点。
+- **可调悬浮窗**：尺寸默认 75%，支持调整尺寸、背景透明度、答案字号、逐字显示和空白处收起。
+- **更清晰的主页**：多模态模式排在前面，首次使用默认多模态；浅色与深色模式使用独立配色。
+- **精简服务接入**：移除 Kirari Network 的登录、额度和专属网关，使用自行配置的模型 API；兼容旧设置及历史记录。
+- **图标与稳定性调整**：更新应用及悬浮窗图标，修复展开闪退、标签裁切，调整气泡收起动画。
 
-## 使用方式
+## 快速开始
 
-### 普通模式
+1. 安装应用，在「设置 → 模型提供方」填写 API 地址、API Key 和接口类型。
+2. 在「模型设置」中选择多模态模型。默认模式会发送截图，因此所选模型必须支持图像输入；也可改用 OCR 模式。
+3. 在主页选择截图方案，打开悬浮窗权限，再启动悬浮球。
+4. 切换到需要阅读的题目页面，点击右球开始截图解题。
+5. 答案输出结束后，可点击下方图标复制、重试或追问。下一题直接再次点击右球。
 
-普通模式适合希望先看分析过程、再决定如何填写答案的场景。
+收起气泡会保留当前答案和正在生成的任务。首次模型配置与系统授权仍需在主界面完成。
 
-1. 在 Hanako 首页启动悬浮球。
-2. 点击悬浮球。
-3. 框选题目区域。
-4. 将截图发送给 AI。
-5. 在结果面板里查看解题思路、答案和一键复制片段。
+### 左球快捷菜单
 
-### 自动模式
+| 入口 | 用途 |
+| --- | --- |
+| 答案 | 展开当前答案 |
+| 视觉 | 切换多模态 / OCR；高亮表示多模态 |
+| 联网 | 开启或关闭联网搜索 |
+| 设置 | 打开应用主界面 |
 
-自动模式适合追求极短操作链路的场景。
+### 两种处理模式
 
-1. 在 Hanako 首页长按启动按钮进入自动模式。
-2. 点击悬浮球。
-3. 应用截取整张屏幕并发送给 AI。
-4. AI 判断题型并执行一个动作：
-   - 选择题：把 `A` / `BC` / `ABD` 这类字母答案显示到悬浮球。
-   - 填空题/文本题：把最终答案写入系统剪贴板。
+| 模式 | 处理方式 | 适用场景 |
+| --- | --- | --- |
+| 多模态视觉（默认） | 直接把截图发送给支持视觉的模型 | 图表、几何图、公式与混合内容 |
+| OCR | 先识别文字，再交给文本模型 | 以文字为主的题目 |
 
-## 悬浮球操作
+Full 版本内置 ML Kit 中文 OCR；Lite 版本不包含本地 OCR，可配置云端 OCR。
 
-悬浮球启动后会常驻在屏幕上，可以自由拖动到任意位置。不同状态下的手势含义如下：
+## 截图方案
 
-| 手势 | Idle / Copied / Error | Processing | MultiPage | MenuExpanded |
-|------|-----------------------|------------|-----------|--------------|
-| 单击 | 打开截屏面板 | 打开截屏面板 | 截图一页 | 关闭菜单 |
-| 双击 | 展开扇形菜单 | 取消处理 | 退出多图 | 关闭菜单 |
-| 长按 | 进入多图截图 | 展开扇形菜单 | 发送截图 | 关闭菜单 |
-| 拖动 | 移动气泡 | 移动气泡 | 移动气泡 | - |
+| 方案 | 优点 | 使用条件与限制 |
+| --- | --- | --- |
+| 系统录屏 | 无需安装额外工具，按系统提示授权即可 | 新的录屏会话需要确认，使用时会有屏幕共享提示 |
+| Shizuku | 按需截取单张图片，无需启动系统录屏会话 | 需安装、启动并授权 Shizuku；通过调试启动后，手机重启需重新启动服务 |
 
-### 快捷菜单
+两种方案都可能无法截取受保护的页面，Shizuku 不保证避开应用检测。切换方案会停止当前悬浮窗，需要重新启动。
 
-双击悬浮球会展开扇形快捷菜单：
+截图会发送至你配置的模型服务；启用联网搜索后，模型可能将搜索词交给配置的搜索服务。
 
-- **视觉**：切换 OCR 模式 / 多模态模式，高亮表示当前为多模态模式。
-- **联网**：开启或关闭联网搜索，高亮表示已开启。
-- **设置**：打开应用主界面。
+## 模型与功能
 
-菜单会根据气泡在屏幕上的位置自动调整展开方向。可以在「设置 → 更多 → 扇形菜单设置」关闭菜单或调整跟随尺寸。
+支持 OpenAI Compatible、OpenAI Responses、Anthropic 和 Google Gemini 接口。OCR、文本、多模态任务可分别指定提供方和模型。
 
-### 多图截图模式
-
-长按悬浮球进入多图模式后，气泡会显示已截取数量：
-
-- 单击：截取当前屏幕并添加到缓冲区。
-- 长按：将所有截图一起发送给 AI。
-- 双击：取消多图模式并清空缓冲区。
-
-## 权限与截图方式
-
-应用依赖以下系统能力：
-
-- 悬浮窗权限：用于显示悬浮球和结果面板。
-- 网络权限：用于请求模型接口、搜索接口和检查更新。
-- 通知权限：用于自动模式完成后的通知提醒。
-- 截屏能力：可在「设置 → 更多 → 屏幕录制方式」选择。
-
-当前支持两种截图后端：
-
-- MediaProjection：Android 系统截屏/录屏授权，兼容性最好，但通常会出现系统授权弹窗。
-- Shizuku ADB：通过 Shizuku 执行 `screencap`，需要设备已运行并授权 Shizuku。
-
-## 配置说明
-
-应用主界面底部有两个入口：
-
-- **Hanako**：启动悬浮球、进入自动模式、切换处理链路、查看历史记录。
-- **设置**：管理模型、联网搜索、助手和其他高级选项。
-
-设置页目前分为：
-
-- **模型提供方**：新增/编辑 API Base URL、API Key、提供方类型，支持连接测试和模型列表预览。
-- **模型设置**：分别为 OCR、文本、多模态任务指定提供方和模型，可收藏常用模型或手动输入模型名。
-- **联网搜索**：配置搜索开关、自动模式是否允许搜索、搜索引擎、API URL、API Key 和 Tavily 额度查询。
-- **助手配置**：管理助手名称、OCR 提示词、文本提示词和多模态提示词。
-- **更多**：配置悬浮球外观、扇形菜单、自动模式、静态振动、截图方式、网络兼容和 The Kirari Network。
-
-当前支持的模型提供方类型：
-
-- OpenAI Compatible
-- OpenAI Responses
-- Anthropic
-- Google Gemini
-- The Kirari Network
-
-## 联网搜索
-
-联网搜索开启后，当前任务模型可以通过 `web_search` 工具决定是否需要搜索。若模型调用工具，Hanako 会根据工具参数中的 `query` 调用搜索引擎，并把结果作为上下文继续交给模型生成回答。
-
-适用场景：
-
-- 时政、新闻、近期事件等模型训练数据未覆盖的问题。
-- 需要最新数据才能准确作答的题目。
-- 明确要求联网查询的问题。
-
-支持的搜索引擎：
-
-- Tavily
-- Brave Search
-- Serper.dev
-- 自定义（Tavily 兼容格式）
-
-## 技术实现概览
-
-- Android + Kotlin
-- Jetpack Compose + Material 3
-- DataStore 保存本地配置与历史记录
-- OkHttp / SSE 处理流式模型输出
-- MediaProjection / Shizuku 完成截屏
-- 前台服务承载悬浮窗
-- `kirari-llm-core` 封装多提供方 LLM 适配器与工具调用格式
-- `kirari-auth-core` 封装 OIDC PKCE 登录流程
-
-主要目录：
-
-- [app/src/main/java/fun/kirari/hanako/ui](app/src/main/java/fun/kirari/hanako/ui)
-- [app/src/main/java/fun/kirari/hanako/overlay](app/src/main/java/fun/kirari/hanako/overlay)
-- [app/src/main/java/fun/kirari/hanako/capture](app/src/main/java/fun/kirari/hanako/capture)
-- [app/src/main/java/fun/kirari/hanako/network](app/src/main/java/fun/kirari/hanako/network)
-- [app/src/main/java/fun/kirari/hanako/workflow](app/src/main/java/fun/kirari/hanako/workflow)
-- [kirari-llm-core](kirari-llm-core)
-- [kirari-auth-core](kirari-auth-core)
+- 支持流式答案、Markdown / LaTeX、历史记录、答案版本切换、片段引用和追问。
+- 支持 Tavily、Brave Search、Serper 及 Tavily 兼容搜索接口。
+- 支持手动输入模型名、收藏模型和连接测试。
+- 思考强度默认「自动」，不额外附加思考参数；OCR 识字请求不受该设置影响。较高强度可能增加等待时间与用量。
+- 应用更新与下载入口指向本仓库；原项目链接仅用于来源说明。
 
 ## 本地构建
 
-环境要求：
-
-- Android Studio 最新稳定版
-- Android SDK 36
-- JDK 11
-- Android 7.0 及以上设备或模拟器（项目 `minSdk = 24`）
-
-构建调试包：
+需要 JDK 17、Android SDK 36，以及项目自带的 Gradle Wrapper。Windows 建议使用纯英文路径（如 `D:\Projects\ZuotiAssistant`），避免 AIDL 工具处理路径时出错。
 
 ```bash
-./gradlew assembleDebug
+git clone https://github.com/lxy005tt-collab/ZuotiAssistant.git
+cd ZuotiAssistant
+./gradlew :app:assembleFullDebug
 ```
 
-运行单元测试：
+Windows 使用 `gradlew.bat`。Android SDK 路径可通过本机 `local.properties` 或环境变量配置，勿提交本机配置与密钥。
+
+如需与已有不同签名的 Hanako 并存：
 
 ```bash
-./gradlew test
+./gradlew :app:assembleFullDebug -PhanakoParallelDebug=true
 ```
 
-构建 release 包：
+该选项沿用旧构建参数名，生成「做题小助手 测试版」，应用 ID 为 `fun.kirari.hanako.dev`。默认包名保留为 `fun.kirari.hanako`，便于同签名版本覆盖升级并保留数据；独立仓库并不改变 Android 的签名规则。
+
+运行检查：
 
 ```bash
-./gradlew assembleRelease
+./gradlew :app:testFullDebugUnitTest :kirari-llm-core:testDebugUnitTest
 ```
 
-项目包含 `full` 和 `lite` 两个 flavor，并按 ABI 拆包：
+签名发布与 Full / Lite、arm64 / 32 位变体说明见 [发布流程](docs/release-process.md)。`kirari-llm-core` 是保留的通用模型协议模块名称，不包含 Kirari Network 专属服务接入。
 
-- `app-lite-arm64-v8a-release.apk`：推荐大多数手机使用。
-- `app-full-arm64-v8a-release.apk`：包含本地 ML Kit 中文 OCR。
-- `app-lite-armeabi-v7a-release.apk` / `app-full-armeabi-v7a-release.apk`：32 位设备使用。
+## 来源与许可证
 
-如果需要构建签名发布包，可在项目根目录提供 `keystore.properties`。
+本项目基于 [zyf2007/HanakoAI](https://github.com/zyf2007/HanakoAI) 修改，保留上游提交历史、原版权声明和 [GNU AGPL-3.0 许可证](LICENSE)。改良说明及修改日期见 [NOTICE.md](NOTICE.md)。
+
+源码以 AGPL-3.0 许可提供，不附带任何担保。第三方依赖适用各自许可证。
 
 ## Changelog
 
-- 历史记录支持长按或点击已引用内容块，快速定位并查看对应题目与回答。
-- 新增 Markdown 内容块引用流程，可在追问中携带多个引用片段，并显示引用关系。
-- 引用菜单新增复制、引用和关闭操作，适配数学公式内容的尺寸与预览定位。
-- 统一历史记录与模型提供方的数据存储权威，补充答案版本 ID 迁移和架构回归测试。
+### 0.1.0-alpha · 2026-11-08
+
+- 以「做题小助手」名称建立独立维护的项目，保留 HanakoAI 来源与许可证。
+- 集成双球一体式悬浮窗、整屏截图、流式答案与快捷复制、重试、追问。
+- 支持模型思考强度、系统录屏 / Shizuku 选择及可调悬浮窗显示。
+- 调整主页配色、模式顺序与默认值，修复悬浮窗生命周期和布局问题。
+- 移除 Kirari Network 专属接入，增加旧配置兼容处理。

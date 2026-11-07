@@ -4,6 +4,7 @@ import `fun`.kirari.hanako.feature.overlay.presentation.OverlayViewModel
 
 import android.content.Context
 import android.graphics.PixelFormat
+import android.os.Build
 import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.runtime.collectAsState
@@ -45,23 +46,25 @@ internal class BubbleMenuController(
     private val savedStateRegistryOwner: SavedStateRegistryOwner,
     private val overlayViewModel: OverlayViewModel,
     private val onItemClick: (BubbleMenuItem) -> Unit,
-    private val onDismiss: () -> Unit
+    private val onDismiss: () -> Unit,
+    private val onCapture: () -> Unit
 ) {
     private val logTag = "HanakoBubbleMenu"
     private var menuView: ComposeView? = null
 
-    fun show() {
+    fun show(leftCenter: Pair<Int, Int>, rightCenter: Pair<Int, Int>) {
         if (menuView != null) return
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             overlayWindowType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.START or Gravity.TOP
             x = 0
             y = 0
+            if (Build.VERSION.SDK_INT >= 30) setFitInsetsTypes(0)
         }
         val composeView = ComposeView(context).apply {
             setViewTreeLifecycleOwner(lifecycleOwner)
@@ -70,15 +73,16 @@ internal class BubbleMenuController(
             setContent {
                 HanakoTheme {
                     val uiState by overlayViewModel.uiState.collectAsState()
-                    val bubbleState = uiState.bubbleState
-                    if (bubbleState is `fun`.kirari.hanako.feature.overlay.state.BubbleState.MenuExpanded) {
+                    if (uiState.settingsMenuVisible) {
                         BubbleMenu(
-                            anchorX = bubbleState.anchorX,
-                            anchorY = bubbleState.anchorY,
+                            anchorX = leftCenter.first,
+                            anchorY = leftCenter.second,
                             settings = uiState.settings,
                             onItemClick = { item -> onItemClick(item) },
                             onDismiss = { },
-                            onDismissFinished = { onDismiss() }
+                            onDismissFinished = { onDismiss() },
+                            captureCenter = rightCenter,
+                            onCapture = if (uiState.working || uiState.capturing) null else onCapture
                         )
                     }
                 }

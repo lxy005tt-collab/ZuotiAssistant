@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,6 +63,8 @@ import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.LeafASTNode
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
+
+internal val LocalCopyMarkerCards = staticCompositionLocalOf { true }
 
 @Composable
 fun MarkdownLatexText(
@@ -151,6 +154,10 @@ private fun splitCopyMarkerBlocks(content: String, markers: List<CopyMarkerToken
 private fun CopyMarkerBlock(
     rawSource: String
 ) {
+    if (!LocalCopyMarkerCards.current) {
+        MarkdownLatexText(content = rawSource, extractCopyMarkers = false)
+        return
+    }
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     Surface(

@@ -13,12 +13,6 @@ import `fun`.kirari.hanako.core.ui.theme.HanakoTheme
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<AppViewModel>()
 
-    private fun consumeKirariRedirect(intent: android.content.Intent?) {
-        val data = intent?.data ?: return
-        viewModel.handleKirariRedirect(data)
-        intent.setData(null)
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -27,7 +21,6 @@ class MainActivity : ComponentActivity() {
             Log.e("HanakoAI", "Uncaught exception in thread ${thread.name}", throwable)
             defaultHandler?.uncaughtException(thread, throwable)
         }
-        consumeKirariRedirect(intent)
         setContent {
             HanakoTheme {
                 HanakoApp(viewModel)
@@ -35,9 +28,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onNewIntent(intent: android.content.Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        consumeKirariRedirect(intent)
-    }
 }

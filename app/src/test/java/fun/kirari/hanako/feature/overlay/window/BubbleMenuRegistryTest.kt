@@ -15,6 +15,7 @@ class BubbleMenuRegistryTest {
     fun entries_keepExpectedStableOrderAndItems() {
         assertEquals(
             listOf(
+                BubbleMenuItem.ShowAnswer,
                 BubbleMenuItem.ToggleRoute,
                 BubbleMenuItem.ToggleSearch,
                 BubbleMenuItem.Settings

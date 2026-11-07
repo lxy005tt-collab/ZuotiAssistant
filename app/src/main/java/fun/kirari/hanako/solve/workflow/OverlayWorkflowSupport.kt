@@ -84,7 +84,8 @@ internal fun assistantToolCallMessage(
     text: String,
     toolCallId: String,
     toolName: String,
-    arguments: JsonObject
+    arguments: JsonObject,
+    providerContext: List<JsonObject> = emptyList()
 ): ChatMessage =
     ChatMessage(
         role = "assistant",
@@ -99,6 +100,7 @@ internal fun assistantToolCallMessage(
         toolCalls = listOf(
             ChatToolCall(
                 id = toolCallId,
+                providerContext = providerContext,
                 function = ChatToolFunction(
                     name = toolName,
                     arguments = arguments.toString()

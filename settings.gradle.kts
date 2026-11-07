@@ -20,8 +20,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Hanako"
+rootProject.name = "ZuotiAssistant"
 include(":app")
-include(":kirari-auth-core")
 include(":kirari-llm-core")
- 

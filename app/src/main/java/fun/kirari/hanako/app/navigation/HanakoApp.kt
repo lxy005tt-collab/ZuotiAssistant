@@ -1,6 +1,5 @@
 package `fun`.kirari.hanako.app.navigation
 
-
 import `fun`.kirari.hanako.feature.settings.ui.assistant.AssistantDetailScreen
 import `fun`.kirari.hanako.feature.settings.ui.assistant.AssistantSettingsScreen
 import `fun`.kirari.hanako.feature.settings.ui.automation.StaticVibrationSettingsScreen
@@ -8,6 +7,7 @@ import `fun`.kirari.hanako.feature.settings.ui.debug.DebugLogScreen
 import `fun`.kirari.hanako.feature.home.ui.HanakoHomeScreen
 import `fun`.kirari.hanako.feature.home.ui.MainShellScreen
 import `fun`.kirari.hanako.feature.home.ui.Screen
+import `fun`.kirari.hanako.feature.home.ui.hanakoHomeColorScheme
 import `fun`.kirari.hanako.feature.settings.ui.model.ModelSelectionDialogState
 import `fun`.kirari.hanako.feature.settings.ui.model.ModelSelectionDialogs
 import `fun`.kirari.hanako.feature.settings.ui.model.ModelSettingsScreen
@@ -17,7 +17,6 @@ import `fun`.kirari.hanako.feature.history.presentation.HistoryDetailOperation
 import `fun`.kirari.hanako.feature.home.presentation.LocalScrollToTopController
 import `fun`.kirari.hanako.feature.home.presentation.rememberScrollToTopController
 import `fun`.kirari.hanako.feature.settings.ui.provider.GenericProviderDetailScreen
-import `fun`.kirari.hanako.feature.settings.ui.provider.KirariProviderDetailScreen
 import `fun`.kirari.hanako.feature.settings.ui.provider.ProviderDetailScreen
 import `fun`.kirari.hanako.feature.settings.ui.provider.ProviderSettingsScreen
 import `fun`.kirari.hanako.feature.settings.ui.search.WebSearchSettingsScreen
@@ -30,7 +29,6 @@ import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.core.app.NotificationManagerCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -115,14 +113,9 @@ fun HanakoApp(viewModel: AppViewModel) {
     val settings by viewModel.settings.collectAsState()
     val debugEntries by AppDebugLogStore.entries.collectAsState()
     val appUpdateState by viewModel.appUpdateState.collectAsState()
-    val kirariAuthMessage by viewModel.kirariAuthMessage.collectAsState()
-    val kirariAuthenticatedProviderId by viewModel.kirariAuthenticatedProviderId.collectAsState()
     val context = LocalContext.current
     val overlayEnabled by OverlayRuntimeState.running.collectAsState()
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
-    var hasNotificationPermission by remember {
-        mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled())
-    }
     val lifecycleOwner = LocalLifecycleOwner.current
     var modelSelectionDialogState by remember { mutableStateOf(ModelSelectionDialogState()) }
     var historyModelPickerResultId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -179,6 +172,9 @@ fun HanakoApp(viewModel: AppViewModel) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
+    val homeVisible = (currentRoute == null || currentRoute == ROUTE_HOME_SHELL) &&
+        currentScreen == Screen.Hanako
+    val chromeColors = if (homeVisible) hanakoHomeColorScheme() else MaterialTheme.colorScheme
     val topBarScrollToTopEnabled = scrollToTopController.canScrollToTop(currentRoute)
 
     LaunchedEffect(currentRoute) {
@@ -187,27 +183,10 @@ fun HanakoApp(viewModel: AppViewModel) {
         }
     }
 
-    LaunchedEffect(kirariAuthMessage) {
-        val message = kirariAuthMessage ?: return@LaunchedEffect
-        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-        viewModel.consumeKirariAuthMessage()
-    }
-
-    LaunchedEffect(kirariAuthenticatedProviderId) {
-        val providerId = kirariAuthenticatedProviderId ?: return@LaunchedEffect
-        currentScreen = Screen.Settings
-        navController.navigate(providerDetailRoute(providerId)) {
-            launchSingleTop = true
-            restoreState = true
-        }
-        viewModel.consumeKirariAuthenticatedProvider()
-    }
-
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 hasOverlayPermission = Settings.canDrawOverlays(context)
-                hasNotificationPermission = NotificationManagerCompat.from(context).areNotificationsEnabled()
             }
         }
 
@@ -227,8 +206,8 @@ fun HanakoApp(viewModel: AppViewModel) {
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        MaterialTheme.colorScheme.surfaceContainerLow,
-                        MaterialTheme.colorScheme.surface
+                        if (homeVisible) chromeColors.background else chromeColors.surfaceContainerLow,
+                        if (homeVisible) chromeColors.background else chromeColors.surface
                     )
                 )
             )
@@ -236,43 +215,45 @@ fun HanakoApp(viewModel: AppViewModel) {
         Scaffold(
             modifier = if (historyQuoteFocused) Modifier.blur(1.5.dp) else Modifier,
             topBar = {
-                CenterAlignedTopAppBar(
-                    modifier = Modifier
-                        .then(if (topBarScrollToTopEnabled) {
-                            Modifier.clickable { scrollToTopController.scrollToTop(currentRoute) }
-                        } else Modifier),
-                    title = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                if (currentRoute?.startsWith("$ROUTE_HANAKO_HISTORY_GROUP_DETAIL/") == true) {
-                                    val groupId = backStackEntry?.arguments?.getString(ARG_GROUP_ID)
-                                    settings.historyGroups.firstOrNull { it.id == groupId }?.name ?: "分组"
-                                } else appTitle(currentRoute, currentScreen),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            if (
-                                currentRoute == ROUTE_HOME_SHELL &&
-                                currentScreen == Screen.Hanako &&
-                                appUpdateState.availableUpdate != null
+                MaterialTheme(colorScheme = chromeColors) {
+                    CenterAlignedTopAppBar(
+                        modifier = Modifier
+                            .then(if (topBarScrollToTopEnabled) {
+                                Modifier.clickable { scrollToTopController.scrollToTop(currentRoute) }
+                            } else Modifier),
+                        title = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                UpgradeIconButton(onClick = viewModel::showUpdateDialog)
+                                Text(
+                                    if (currentRoute?.startsWith("$ROUTE_HANAKO_HISTORY_GROUP_DETAIL/") == true) {
+                                        val groupId = backStackEntry?.arguments?.getString(ARG_GROUP_ID)
+                                        settings.historyGroups.firstOrNull { it.id == groupId }?.name ?: "分组"
+                                    } else appTitle(currentRoute, currentScreen),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (
+                                    currentRoute == ROUTE_HOME_SHELL &&
+                                    currentScreen == Screen.Hanako &&
+                                    appUpdateState.availableUpdate != null
+                                ) {
+                                    UpgradeIconButton(onClick = viewModel::showUpdateDialog)
+                                }
                             }
-                        }
-                    },
-                    navigationIcon = {
-                        if (currentRoute != null && currentRoute != ROUTE_HOME_SHELL) {
-                            IconButton(onClick = { navController.popBackStack() }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        },
+                        navigationIcon = {
+                            if (currentRoute != null && currentRoute != ROUTE_HOME_SHELL) {
+                                IconButton(onClick = { navController.popBackStack() }) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                                }
                             }
-                        }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = Color.Transparent
+                        },
+                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                            containerColor = Color.Transparent
+                        )
                     )
-                )
+                }
             },
             bottomBar = {
                 AnimatedVisibility(
@@ -280,14 +261,16 @@ fun HanakoApp(viewModel: AppViewModel) {
                     enter = slideInVertically { it } + fadeIn(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
-                    NavigationBar {
-                        Screen.entries.forEach { screen ->
-                            NavigationBarItem(
-                                selected = currentScreen == screen,
-                                onClick = { currentScreen = screen },
-                                icon = { Icon(screen.icon, contentDescription = screen.title) },
-                                label = { Text(screen.title) }
-                            )
+                    MaterialTheme(colorScheme = chromeColors) {
+                        NavigationBar(containerColor = chromeColors.surface, tonalElevation = 0.dp) {
+                            Screen.entries.forEach { screen ->
+                                NavigationBarItem(
+                                    selected = currentScreen == screen,
+                                    onClick = { currentScreen = screen },
+                                    icon = { Icon(screen.icon, contentDescription = screen.title) },
+                                    label = { Text(screen.title) }
+                                )
+                            }
                         }
                     }
                 }
@@ -300,7 +283,7 @@ fun HanakoApp(viewModel: AppViewModel) {
                     startDestination = ROUTE_HOME_SHELL,
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface)
+                        .background(if (homeVisible) chromeColors.background else MaterialTheme.colorScheme.surface)
                         .padding(padding),
                     enterTransition = {
                         slideInHorizontally { it } + fadeIn()
@@ -355,6 +338,13 @@ fun HanakoApp(viewModel: AppViewModel) {
                                         }
                                     },
                                     onSelectRoute = viewModel::setRoute,
+                                    onSelectCaptureMethod = { method ->
+                                        if (method != settings.screenCaptureMethod) {
+                                            context.stopService(Intent(context, OverlayService::class.java))
+                                            ScreenCaptureManager.stop(context, settings.screenCaptureMethod)
+                                            viewModel.setScreenCaptureMethod(method)
+                                        }
+                                    },
                                     onOpenHistory = { navController.navigate(ROUTE_HANAKO_HISTORY) }
                                 )
                             },
@@ -525,14 +515,9 @@ fun HanakoApp(viewModel: AppViewModel) {
                         if (provider != null) {
                         val connectionTestStates by viewModel.connectionTestManager.states.collectAsState()
                         val connectionTestState = connectionTestStates[provider.id] ?: ConnectionTestState()
-                        val providerMetaState by viewModel.providerMetaState.collectAsState()
-                        val kirariAccountState by viewModel.kirariAccountState.collectAsState()
                         ProviderDetailScreen(
                             provider = provider,
                             connectionTestState = connectionTestState,
-                            providerMetaState = providerMetaState,
-                            kirariAccountState = kirariAccountState,
-                            hasKirariClientId = viewModel.hasKirariClientId(),
                             onUpdateProvider = viewModel::updateProvider,
                             onViewModels = {
                                 modelSelectionDialogState = modelSelectionDialogState.copy(
@@ -540,19 +525,7 @@ fun HanakoApp(viewModel: AppViewModel) {
                                 )
                             },
                             onTestConnection = viewModel::testProviderConnection,
-                            onClearConnectionTest = { viewModel.resetConnectionTest(provider.id) },
-                            onLoadProviderMeta = viewModel::loadProviderMeta,
-                            onClearProviderMeta = viewModel::resetProviderMeta,
-                            shouldSuggestKirariAutoSetup = viewModel.shouldSuggestKirariAutoSetup(settings, providerMetaState),
-                            onApplyKirariAutoSetup = viewModel::applyKirariAutoSetup,
-                            onLoginKirari = {
-                                viewModel.startKirariLogin { authorizationUrl ->
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, Uri.parse(authorizationUrl))
-                                    )
-                                }
-                            },
-                            onLogoutKirari = viewModel::logoutKirari
+                            onClearConnectionTest = { viewModel.resetConnectionTest(provider.id) }
                         )
                     } else {
                         LaunchedEffect(Unit) { navController.popBackStack() }
@@ -561,6 +534,7 @@ fun HanakoApp(viewModel: AppViewModel) {
                     composable(ROUTE_SETTINGS_MODEL) {
                         ModelSettingsScreen(
                             settings = settings,
+                            onReasoningEffortChange = viewModel::setReasoningEffort,
                             onPickModel = {
                                 modelSelectionDialogState = modelSelectionDialogState.copy(
                                     providerPickerTarget = it
@@ -606,58 +580,10 @@ fun HanakoApp(viewModel: AppViewModel) {
                     composable(ROUTE_SETTINGS_MORE) {
                         MoreSettingsScreen(
                             scrollRoute = ROUTE_SETTINGS_MORE,
-                            automationSettings = settings.automation,
-                            selectedMethod = settings.screenCaptureMethod,
+                            floatingWindowSettings = settings.floatingWindow,
                             trustAllHttpsCertificates = settings.trustAllHttpsCertificates,
-                            kirariSettings = settings.kirari,
-                            hasKirariClientId = viewModel.hasKirariClientId(),
-                            hasNotificationPermission = hasNotificationPermission,
-                            onToggleCompletionNotification = { enabled ->
-                                viewModel.updateAutomationSettings {
-                                    it.copy(completionNotificationEnabled = enabled)
-                                }
-                            },
-                            onOpenNotificationPermission = {
-                                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                runCatching {
-                                    context.startActivity(intent)
-                                }.onFailure {
-                                    context.startActivity(
-                                        Intent(
-                                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                            Uri.parse("package:${context.packageName}")
-                                        )
-                                    )
-                                }
-                            },
-                            onToggleStaticMode = { enabled ->
-                                viewModel.updateAutomationSettings {
-                                    it.copy(staticModeEnabled = enabled)
-                                }
-                            },
-                            onNavigateStaticVibrationSettings = { navController.navigate(ROUTE_SETTINGS_STATIC_VIBRATION) },
-                            onUpdateAutomationSettings = { automationSettings ->
-                                viewModel.updateAutomationSettings { automationSettings }
-                            },
-                            onSelectMethod = viewModel::setScreenCaptureMethod,
-                            onUpdateTimeoutSeconds = { seconds ->
-                                viewModel.updateAutomationSettings {
-                                    it.copy(autoModeTimeoutSeconds = seconds)
-                                }
-                            },
-                            onToggleTrustAllHttpsCertificates = viewModel::setTrustAllHttpsCertificates,
-                            onUpdateKirariServerUrl = { serverUrl ->
-                                viewModel.updateKirariSettings { it.copy(serverUrl = serverUrl.trim()) }
-                            },
-                            onLoginKirari = {
-                                viewModel.startKirariLogin { authorizationUrl ->
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, Uri.parse(authorizationUrl))
-                                    )
-                                }
-                            },
-                            onLogoutKirari = viewModel::logoutKirari
+                            onUpdateFloatingWindowSettings = viewModel::updateFloatingWindowSettings,
+                            onToggleTrustAllHttpsCertificates = viewModel::setTrustAllHttpsCertificates
                         )
                     }
                     composable(ROUTE_SETTINGS_STATIC_VIBRATION) {

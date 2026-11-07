@@ -1,161 +1,39 @@
-# Hanako 发布流程
+# 做题小助手发布流程
 
-本文档描述 Hanako GitHub Release 的完整发布流程。版本示例使用 `0.0.17-alpha`，执行时替换为目标版本。
+本项目独立发布至 [lxy005tt-collab/ZuotiAssistant](https://github.com/lxy005tt-collab/ZuotiAssistant)，应用更新检查也只读取该仓库。`docs/release-notes-v0.0.*` 是保留的上游历史记录，不代表本项目已经发布的版本。
 
-## 发布约束
+## 发布准备
 
-- Git 标签、Release 名称统一使用 `v<version>`，例如 `v0.0.17-alpha`。
-- `app/build.gradle.kts` 中 `versionCode` 必须递增，`versionName` 必须与标签去掉 `v` 后完全一致。
-- README 顶部的 Download 和 View Release Notes 链接必须指向新版本。
-- README 的 `## Changelog` 必须与 GitHub Release 的 `## Changelog` 内容一致。App 优先读取 GitHub Latest Release；API 失败时读取 `main` 分支 README 作为回退。
-- Release 正文沿用上一个版本的结构和下载说明措辞。只重写 changelog；版本比较链接、附件链接、版本号和实际文件大小按新版本替换。
-- Release 必须上传 Lite/Full 与 arm64-v8a/armeabi-v7a 组合的四个签名 APK，文件名不得改变。
+1. 更新 `app/build.gradle.kts` 中的 `versionName` 和递增的 `versionCode`。
+2. 更新 README 的当前版本及 `## Changelog`，保留 HanakoAI 来源、NOTICE 与 LICENSE。
+3. 使用固定的发布签名证书；签名变化会影响覆盖安装，不能依赖清除用户数据解决。
+4. 根目录 `keystore.properties` 可配置 `storeFile`、`storePassword`、`keyAlias` 和 `keyPassword`。证书与密码仅保存在本机或发布环境，不提交到 Git。
 
-## 1. 发布前检查
-
-确认工作区、远端、GitHub CLI 和签名配置：
+## 检查与构建
 
 ```bash
-git status --short
-git fetch origin --tags
-git log --oneline --decorate -10
-gh auth status
-test -f keystore.properties
+./gradlew :app:testFullDebugUnitTest :kirari-llm-core:testDebugUnitTest
+./gradlew :app:assembleFullRelease :app:assembleLiteRelease
 ```
 
-读取上一个 Release 正文与附件，作为本次模板：
+Windows 使用 `gradlew.bat`，建议把源码放在纯英文路径。
 
-```bash
-gh release view v0.0.16-alpha \
-  --json name,tagName,isPrerelease,isDraft,body,assets,publishedAt
-```
+产物位于 `app/build/outputs/apk/<full|lite>/release/`，区分：
 
-不要重新设计下载说明。保留 Full/Lite、ML Kit、32 位设备和 Kirari Network 说明的原有顺序与措辞。
+- Full：包含本地 ML Kit 中文 OCR。
+- Lite：不包含本地 OCR，需使用云端 OCR 或多模态模型。
+- arm64-v8a：适用于大多数现代 Android 手机。
+- armeabi-v7a：用于支持 32 位应用的设备。
 
-## 2. 更新版本与 changelog
+发布前检查包名、版本、安装与升级行为，并在设备上确认悬浮窗、截图授权和模型调用。不要把调试包标注成签名正式版。
 
-修改 `app/build.gradle.kts`：
+## GitHub Release
 
-```kotlin
-versionCode = 17
-versionName = "0.0.17-alpha"
-```
+- 标签与发布标题使用 `v<versionName>`，例如 `v0.1.0-alpha`。
+- 从已经提交的源码创建标签，并上传同一版本、同一提交构建出的 APK。
+- 发布正文的 `## Changelog` 写入本次变化，`## 下载说明` 说明 Full / Lite 与架构差异。
+- 发布后才在 README 添加对应的真实下载链接，源码与 APK 应当可以相互对应。
+- 应用优先查询 GitHub Latest Release；该 API 不返回预发布版本。只有作为普通 Release 发布的版本才通过此通道提示更新。
+- README 回退解析识别 `[[Download <version>](<apk-url>)]` 和 `[[View Release Notes](<release-url>)]` 格式；未发布安装包时不要添加占位下载链接。
 
-同步修改 README：
-
-- 顶部 Download 链接的显示版本、标签和下载 URL。
-- View Release Notes 的标签 URL。
-- 文末 `## Changelog` 下的内容。
-
-更新检查解析约定见 `AppUpdateApi.kt`：
-
-- GitHub Release 正文从 `## Changelog` 开始读取，到下一个二级标题为止。
-- README 回退路径读取 `## Changelog` 之后的全部内容，因此 Changelog 必须保持为 README 最后一个二级章节。
-
-## 3. 测试与签名构建
-
-```bash
-./gradlew test
-./gradlew clean assembleRelease
-```
-
-预期产物：
-
-```text
-app/build/outputs/apk/lite/release/app-lite-arm64-v8a-release.apk
-app/build/outputs/apk/lite/release/app-lite-armeabi-v7a-release.apk
-app/build/outputs/apk/full/release/app-full-arm64-v8a-release.apk
-app/build/outputs/apk/full/release/app-full-armeabi-v7a-release.apk
-```
-
-使用 Android SDK Build Tools 校验每个 APK 的签名：
-
-```bash
-APKSIGNER="$ANDROID_SDK_ROOT/build-tools/<version>/apksigner"
-for apk in app/build/outputs/apk/{lite,full}/release/*.apk; do
-  "$APKSIGNER" verify --verbose --print-certs "$apk"
-done
-```
-
-再检查版本、文件大小和摘要：
-
-```bash
-sha256sum app/build/outputs/apk/{lite,full}/release/*.apk
-ls -lh app/build/outputs/apk/{lite,full}/release/*.apk
-```
-
-## 4. 准备 Release 正文
-
-复制上一个 Release 正文作为模板，保持以下章节顺序：
-
-```markdown
-**Full Changelog**: https://github.com/zyf2007/HanakoAI/compare/<previous-tag>...<new-tag>
-
-<沿用 Full/Lite 与 ML Kit 说明>
-
-## Changelog
-
-<与 README 完全一致的 changelog>
-
-## 下载说明
-
-<沿用格式，替换版本 URL 和构建后的实际文件大小>
-
-## 说明
-
-<沿用已有说明>
-```
-
-发布前逐项确认：
-
-- Changelog 与 README 一致。
-- 四个链接使用新标签。
-- 文件大小来自本次构建，而不是复制旧版本数字。
-- Full Changelog 比较范围为上一个标签到新标签。
-
-## 5. 提交、推送与发布
-
-先提交版本元数据和 README：
-
-```bash
-git add app/build.gradle.kts README.md
-git add -f docs/release-process.md
-git commit -m "发布 v0.0.17-alpha"
-git push origin HEAD:main
-git tag v0.0.17-alpha
-git push origin v0.0.17-alpha
-```
-
-标签应指向发布提交。历史版本使用轻量标签，继续保持一致。
-
-创建 Release：
-
-```bash
-gh release create v0.0.17-alpha \
-  app/build/outputs/apk/lite/release/app-lite-arm64-v8a-release.apk \
-  app/build/outputs/apk/lite/release/app-lite-armeabi-v7a-release.apk \
-  app/build/outputs/apk/full/release/app-full-arm64-v8a-release.apk \
-  app/build/outputs/apk/full/release/app-full-armeabi-v7a-release.apk \
-  --title v0.0.17-alpha \
-  --notes-file <release-notes-file>
-```
-
-除非明确改变项目发布策略，不要添加 `--prerelease`。现有 Latest Release 虽然版本名含 `alpha`，但 GitHub Release 本身不是 prerelease；App 使用 `/releases/latest` 获取它。
-
-## 6. 发布后验证
-
-```bash
-gh release view v0.0.17-alpha --json tagName,name,isDraft,isPrerelease,body,assets,url
-curl -fsSL https://api.github.com/repos/zyf2007/HanakoAI/releases/latest
-curl -fsSL https://raw.githubusercontent.com/zyf2007/HanakoAI/main/README.md
-```
-
-验证结果必须满足：
-
-- Latest Release 是新标签且不是 draft。
-- 四个 APK 都存在，文件名和本地一致。
-- Release 的 `## Changelog` 能被 App 截取，且不包含下载说明。
-- README 顶部链接可访问，README changelog 与 Release 一致。
-- 安装 Release APK 后，旧版本能够在 App 内发现新版本并显示 changelog。
-
-如果附件上传或线上验证失败，不要复用标签发布另一个提交。修复后使用 `gh release upload <tag> <files> --clobber` 补齐附件，并确保标签仍指向预期发布提交。
+每次分发均应保留项目来源说明与 AGPL-3.0 许可证，并提供对应版本的源代码。

@@ -13,8 +13,7 @@ enum class ProviderKind {
     OPENAI_COMPATIBLE,
     OPENAI_RESPONSES,
     ANTHROPIC,
-    GOOGLE,
-    KIRARI_NETWORK
+    GOOGLE
 }
 
 data class ProviderConfig(
@@ -45,7 +44,8 @@ data class ChatToolFunction(
 data class ChatToolCall(
     val id: String,
     val type: String = "function",
-    val function: ChatToolFunction
+    val function: ChatToolFunction,
+    val providerContext: List<JsonObject> = emptyList()
 )
 
 data class ChatMessage(
@@ -57,7 +57,8 @@ data class ChatMessage(
 
 sealed class LlmEvent {
     data class TextDelta(val text: String) : LlmEvent()
-    data class ToolCall(val id: String?, val name: String, val arguments: JsonObject) : LlmEvent()
+    data class ToolCall(val id: String?, val name: String, val arguments: JsonObject,
+        val providerContext: List<JsonObject> = emptyList()) : LlmEvent()
     data object Done : LlmEvent()
 }
 
@@ -70,7 +71,8 @@ data class StreamRequest(
     val messages: List<ChatMessage>? = null,
     val tools: List<ToolDef>? = null,
     val firstDeltaTimeoutMillis: Long,
-    val trustAllHttpsCertificates: Boolean
+    val trustAllHttpsCertificates: Boolean,
+    val reasoningEffort: ReasoningEffort = ReasoningEffort.AUTO
 ) {
     val hasImages: Boolean get() = imagesBase64.isNotEmpty()
 

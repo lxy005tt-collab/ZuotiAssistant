@@ -1,6 +1,7 @@
 package `fun`.kirari.hanako.core.network.update
 
 import `fun`.kirari.hanako.BuildConfig
+import `fun`.kirari.hanako.app.ProjectInfo
 import `fun`.kirari.hanako.core.debug.AppDebugLogStore
 import `fun`.kirari.hanako.core.network.NetworkClientProvider
 import kotlinx.coroutines.Dispatchers
@@ -39,10 +40,10 @@ internal class AppUpdateApi(
 
     private fun checkLatestRelease(): AppUpdateInfo? {
         val request = Request.Builder()
-            .url(LATEST_RELEASE_URL)
+            .url(ProjectInfo.LATEST_RELEASE_API)
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28")
-            .header("User-Agent", "HanakoAI/${BuildConfig.VERSION_NAME}")
+            .header("User-Agent", "ZuotiAssistant/${BuildConfig.VERSION_NAME}")
             .get()
             .build()
 
@@ -60,8 +61,8 @@ internal class AppUpdateApi(
 
     private fun checkReadmeReleaseLink(): AppUpdateInfo? {
         val request = Request.Builder()
-            .url(README_RAW_URL)
-            .header("User-Agent", "HanakoAI/${BuildConfig.VERSION_NAME}")
+            .url(ProjectInfo.README_RAW_URL)
+            .header("User-Agent", "ZuotiAssistant/${BuildConfig.VERSION_NAME}")
             .get()
             .build()
 
@@ -100,8 +101,6 @@ internal class AppUpdateApi(
     }
 
     private companion object {
-        private const val LATEST_RELEASE_URL = "https://api.github.com/repos/zyf2007/HanakoAI/releases/latest"
-        private const val README_RAW_URL = "https://raw.githubusercontent.com/zyf2007/HanakoAI/main/README.md"
         private const val TIMEOUT_MILLIS = 12_000L
     }
 }

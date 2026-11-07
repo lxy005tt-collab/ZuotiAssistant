@@ -28,8 +28,10 @@ internal class OverlayStateObserver(
                     logTag,
                     "uiState launchMode=${state.launchMode} autoRunState=${state.autoRunState} bubble=${state.bubbleState::class.simpleName} sheetVisible=${state.sheetVisible} working=${state.working} resultId=${state.result?.id} error=${state.error}"
                 )
-                bubbleWindowController.update(state.bubbleState, state.launchMode)
-                if (state.sheetVisible) {
+                bubbleWindowController.update(state)
+                if (state.capturing) {
+                    panelWindowController.dismiss()
+                } else if (state.sheetVisible) {
                     panelWindowController.showOrUpdate(state.sheetMode)
                 } else {
                     panelWindowController.hideWithAnimation()

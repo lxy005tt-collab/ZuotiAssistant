@@ -1,9 +1,6 @@
 package `fun`.kirari.hanako.app.navigation
 
 import `fun`.kirari.hanako.feature.settings.presentation.ConnectionTestManager
-import `fun`.kirari.hanako.feature.settings.presentation.KirariAccountState
-import `fun`.kirari.hanako.feature.settings.presentation.KirariAuthController
-import `fun`.kirari.hanako.feature.settings.presentation.ProviderMetaState
 import `fun`.kirari.hanako.feature.settings.presentation.ProviderRuntimeController
 import `fun`.kirari.hanako.feature.settings.presentation.WebSearchQuotaController
 import `fun`.kirari.hanako.feature.settings.presentation.WebSearchQuotaState
@@ -12,11 +9,9 @@ import `fun`.kirari.hanako.feature.settings.presentation.AppUpdateController
 import `fun`.kirari.hanako.feature.settings.presentation.AppUpdateUiState
 
 import android.app.Application
-import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import `fun`.kirari.hanako.app.HanakoApplication
-import `fun`.kirari.hanako.BuildConfig
 import `fun`.kirari.hanako.core.data.AppSettings
 import `fun`.kirari.hanako.core.data.HistoryCommandResult
 import `fun`.kirari.hanako.core.data.HistoryMarkerColor
@@ -24,6 +19,7 @@ import `fun`.kirari.hanako.core.model.QuotedFragment
 import `fun`.kirari.hanako.core.data.QuestionCardArtifact
 import `fun`.kirari.hanako.core.data.AssistantPreset
 import `fun`.kirari.hanako.core.data.AutomationSettings
+import `fun`.kirari.hanako.core.data.FloatingWindowSettings
 import `fun`.kirari.hanako.core.data.ModelPurpose
 import `fun`.kirari.hanako.core.data.ModelProviderConfig
 import `fun`.kirari.hanako.core.data.ModelSelection
@@ -32,7 +28,6 @@ import `fun`.kirari.hanako.core.model.ProcessingRoute
 import `fun`.kirari.hanako.core.data.ScreenCaptureMethod
 import `fun`.kirari.hanako.core.data.SettingsRepository
 import `fun`.kirari.hanako.core.debug.AppDebugLogStore
-import `fun`.kirari.hanako.core.data.KirariSettings
 import `fun`.kirari.hanako.core.data.WebSearchSettings
 import `fun`.kirari.hanako.platform.capture.ocr.LocalOcrManager
 import `fun`.kirari.hanako.feature.history.presentation.HistoryWorkflowController
@@ -69,17 +64,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val providerRuntimeController = ProviderRuntimeController(
         scope = viewModelScope,
         settings = settings,
-        providerModelsApi = container.providerModelsApi,
-        refreshKirariSession = { syncKirariSessionStatus(force = true) }
+        providerModelsApi = container.providerModelsApi
     )
     val connectionTestManager: ConnectionTestManager =
         providerRuntimeController.connectionTestManager
-    val providerMetaState: StateFlow<ProviderMetaState> =
-        providerRuntimeController.providerMetaState
     private val settingsEditorController = SettingsEditorController(
         scope = viewModelScope,
-        repository = repository,
-        providerMetaState = providerMetaState
+        repository = repository
     )
     private val webSearchQuotaController = WebSearchQuotaController(
         scope = viewModelScope,
@@ -93,20 +84,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         appUpdateApi = container.appUpdateApi
     )
     val appUpdateState: StateFlow<AppUpdateUiState> = appUpdateController.state
-    private val kirariAuthController = KirariAuthController(
-        scope = viewModelScope,
-        settingsStore = container.settingsStore,
-        kirariAuthManager = container.kirariAuthManager,
-        settingsProvider = { settings.value },
-        clearProviderMeta = { providerRuntimeController.clearProviderMeta() }
-    )
-    val kirariAuthMessage: StateFlow<String?> = kirariAuthController.message
-    val kirariAccountState: StateFlow<KirariAccountState> = kirariAuthController.accountState
-    val kirariAuthenticatedProviderId: StateFlow<String?> = kirariAuthController.authenticatedProviderId
-
     init {
         syncLocalOcrInstallation()
-        syncKirariSessionStatus()
         appUpdateController.checkOnceSilently()
     }
 
@@ -146,6 +125,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setScreenCaptureMethod(method: ScreenCaptureMethod) {
         settingsEditorController.setScreenCaptureMethod(method)
+    }
+
+    fun updateFloatingWindowSettings(settings: FloatingWindowSettings) {
+        settingsEditorController.updateFloatingWindowSettings(settings)
     }
 
     fun updateModelSelection(purpose: ModelPurpose, selection: ModelSelection) =
@@ -196,12 +179,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         settingsEditorController.updateAutomationSettings(transform)
     }
 
-    fun setTrustAllHttpsCertificates(enabled: Boolean) {
-        settingsEditorController.setTrustAllHttpsCertificates(enabled)
+    fun setReasoningEffort(effort: `fun`.kirari.llm.core.ReasoningEffort) {
+        viewModelScope.launch { repository.update { it.copy(reasoningEffort = effort) } }
     }
 
-    fun updateKirariSettings(transform: (KirariSettings) -> KirariSettings) {
-        settingsEditorController.updateKirariSettings(transform)
+    fun setTrustAllHttpsCertificates(enabled: Boolean) {
+        settingsEditorController.setTrustAllHttpsCertificates(enabled)
     }
 
     fun updateWebSearchSettings(transform: (WebSearchSettings) -> WebSearchSettings) {
@@ -214,26 +197,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resetWebSearchQuotaState() {
         webSearchQuotaController.reset()
-    }
-
-    fun startKirariLogin(onReady: (String) -> Unit) {
-        kirariAuthController.startLogin(onReady)
-    }
-
-    fun handleKirariRedirect(uri: Uri) {
-        kirariAuthController.handleRedirect(uri)
-    }
-
-    fun consumeKirariAuthenticatedProvider() {
-        kirariAuthController.consumeAuthenticatedProvider()
-    }
-
-    fun logoutKirari() {
-        kirariAuthController.logout()
-    }
-
-    fun consumeKirariAuthMessage() {
-        kirariAuthController.consumeMessage()
     }
 
     fun clearHistory() {
@@ -282,22 +245,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         providerRuntimeController.resetConnectionTest(providerId)
     }
 
-    fun loadProviderMeta(provider: ModelProviderConfig) {
-        providerRuntimeController.loadProviderMeta(provider)
-    }
-
-    fun resetProviderMeta() {
-        providerRuntimeController.resetProviderMeta()
-    }
-
-    fun shouldSuggestKirariAutoSetup(settings: AppSettings, providerMetaState: ProviderMetaState): Boolean {
-        return settingsEditorController.shouldSuggestKirariAutoSetup(settings, providerMetaState)
-    }
-
-    fun applyKirariAutoSetup() {
-        settingsEditorController.applyKirariAutoSetup()
-    }
-
     fun clearDebugLogs() {
         AppDebugLogStore.clear()
     }
@@ -310,9 +257,4 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         appUpdateController.dismissDialog()
     }
 
-    fun hasKirariClientId(): Boolean = BuildConfig.KIRARI_OIDC_CLIENT_ID.isNotBlank()
-
-    fun syncKirariSessionStatus(force: Boolean = false) {
-        kirariAuthController.syncSessionStatus(force)
-    }
 }

@@ -110,11 +110,7 @@ fun ProviderEditor(
 
         ProviderTypeSelector(
             kind = provider.kind,
-            availableKinds = if (provider.kind == ProviderKind.KIRARI_NETWORK) {
-                ProviderKind.entries.toList()
-            } else {
-                creatableProviderKinds()
-            },
+            availableKinds = creatableProviderKinds(),
             enabled = !readOnly,
             onChange = { nextKind ->
                 onChange(provider.copy(kind = nextKind))

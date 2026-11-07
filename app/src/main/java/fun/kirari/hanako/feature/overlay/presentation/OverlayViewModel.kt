@@ -25,6 +25,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.map
+import `fun`.kirari.hanako.core.model.loadHistoryBitmaps
+import `fun`.kirari.hanako.feature.overlay.state.SheetAnimationDurationMs
 
 internal class OverlayViewModel(
     private val appContext: Context,
@@ -40,6 +47,7 @@ internal class OverlayViewModel(
     
     private val _uiState = MutableStateFlow(OverlayUiState())
     val uiState: StateFlow<OverlayUiState> = _uiState.asStateFlow()
+    private var historyReturnMode = OverlaySheetMode.HOME
     private val multiPageCaptureController = MultiPageCaptureController(
         appContext = appContext,
         scope = viewModelScope,
@@ -71,7 +79,10 @@ internal class OverlayViewModel(
         capturePage = ::capturePage,
         sendCaptures = ::sendCaptures,
         exitMultiPageCaptureMode = ::exitMultiPageCaptureMode,
-        cancelActiveProcessing = autoProcessingController::cancelActiveProcessing,
+        cancelActiveProcessing = {
+            if (_uiState.value.launchMode == CaptureLaunchMode.NORMAL) answerController.cancel()
+            else autoProcessingController.cancelActiveProcessing()
+        },
         enterMultiPageCaptureMode = ::enterMultiPageCaptureMode,
         isBubbleMenuEnabled = { _uiState.value.settings.automation.bubbleMenuEnabled },
         toggleProcessingRoute = ::toggleProcessingRoute,
@@ -82,13 +93,19 @@ internal class OverlayViewModel(
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 }
             )
-        }
+        },
+        openAnswer = ::showCurrentAnswer
     )
 
     init {
         viewModelScope.launch {
             repository.settings.collect { settings ->
                 _uiState.update { it.copy(settings = settings) }
+            }
+        }
+        viewModelScope.launch {
+            solveOperations.observeHistory(repository.settings.map { it.history }).collect { history ->
+                _uiState.update { it.copy(history = history.results, busyHistoryIds = history.activeTasks.keys) }
             }
         }
         
@@ -124,7 +141,64 @@ internal class OverlayViewModel(
             processFullScreen()
             return
         }
+        val state = _uiState.value
+        if (state.capturing) return
+        _uiState.update { it.copy(sheetVisible = !state.sheetVisible) }
+    }
+
+    fun toggleCardSize() {
+        _uiState.update { it.copy(cardExpanded = !it.cardExpanded) }
+    }
+
+    fun setSettingsMenuVisible(visible: Boolean) {
+        _uiState.update { it.copy(settingsMenuVisible = visible) }
+    }
+
+    fun toggleFloatingSettings() {
+        _uiState.update { it.copy(settingsMenuVisible = !it.settingsMenuVisible, sheetVisible = !it.settingsMenuVisible) }
+    }
+
+    fun showCurrentAnswer() {
+        _uiState.update {
+            it.copy(sheetVisible = true, settingsMenuVisible = false,
+                sheetMode = OverlaySheetMode.RESULT)
+        }
+    }
+
+    fun captureAndSolveFullScreen() {
+        if (_uiState.value.working || _uiState.value.capturing) return
+        _uiState.update {
+            it.copy(capturing = true, settingsMenuVisible = false, sheetVisible = false,
+                error = null, launchMode = CaptureLaunchMode.NORMAL, autoRunState = AutoRunState.IDLE)
+        }
         viewModelScope.launch {
+            try {
+                // Let the hidden overlay disappear from the compositor before reading a frame.
+                delay(64L)
+                val bitmap = withContext(Dispatchers.IO) {
+                    `fun`.kirari.hanako.platform.capture.ScreenCaptureManager.captureLatestBitmap(
+                        appContext, _uiState.value.settings.screenCaptureMethod)
+                }
+                _uiState.update { it.copy(capturing = false, screenshot = bitmap) }
+                answerController.process(bitmap)
+            } catch (error: CancellationException) {
+                _uiState.update { it.copy(capturing = false) }
+                throw error
+            } catch (error: Exception) {
+                _uiState.update { it.copy(capturing = false, result = null, selectedBitmap = null,
+                    liveAnswerText = "", liveOcrText = "", error = error.message ?: "截屏失败，请检查截屏授权",
+                    sheetVisible = true, sheetMode = OverlaySheetMode.RESULT) }
+            }
+        }
+    }
+
+    fun captureNewQuestion() {
+        if (_uiState.value.working || _uiState.value.capturing) return
+        viewModelScope.launch {
+            val wasVisible = _uiState.value.sheetVisible
+            _uiState.update { it.copy(sheetVisible = false, capturing = true) }
+            // Wait until the old panel and keyboard have left the captured screen.
+            delay(if (wasVisible) SheetAnimationDurationMs.toLong() + 180L else 120L)
             runCatching {
                 `fun`.kirari.hanako.platform.capture.ScreenCaptureManager.captureLatestBitmap(appContext, _uiState.value.settings.screenCaptureMethod)
             }.onSuccess { bitmap ->
@@ -138,8 +212,12 @@ internal class OverlayViewModel(
                         result = null,
                         error = null,
                         working = false,
+                        sendingFollowUp = false,
+                        followUpDraft = "",
+                        capturing = false,
                         sheetVisible = true,
                         sheetMode = OverlaySheetMode.CROP,
+                        cardExpanded = false,
                         autoRunState = AutoRunState.IDLE,
                         autoCopiedLabel = null,
                         pendingVibrationLetters = null
@@ -151,6 +229,7 @@ internal class OverlayViewModel(
                 _uiState.update {
                     it.copy(
                         error = error.message ?: "截屏失败",
+                        capturing = false,
                         sheetVisible = true,
                         sheetMode = OverlaySheetMode.CROP
                     )
@@ -172,11 +251,65 @@ internal class OverlayViewModel(
     }
 
     fun regenerateCurrentResult() {
-        answerController.regenerateCurrentResult()
+        val state = _uiState.value
+        if (state.working || state.capturing || state.result?.id in state.busyHistoryIds) return
+        val result = state.result
+        if (result == null) {
+            state.selectedBitmap?.let(answerController::process) ?: captureAndSolveFullScreen()
+        } else if (result.followUpTurns.isNotEmpty() || result.automationAction != null) {
+            // Retrying an old conversation must not silently erase its follow-ups.
+            val bitmaps = result.loadHistoryBitmaps()
+            if (bitmaps.isEmpty()) {
+                _uiState.update { it.copy(error = "找不到原始截图，无法重试") }
+            } else {
+                answerController.process(bitmaps)
+            }
+        } else {
+            answerController.regenerateCurrentResult()
+        }
+    }
+
+    fun updateFollowUpDraft(text: String) {
+        _uiState.update { it.copy(followUpDraft = text) }
+    }
+
+    fun sendFollowUp() = answerController.sendFollowUp()
+
+    fun retryFollowUp() = answerController.sendFollowUp(retry = true)
+
+    fun cancelAnswer() = answerController.cancel()
+
+    fun openHistory() {
+        if (_uiState.value.working || _uiState.value.capturing) return
+        if (_uiState.value.sheetMode != OverlaySheetMode.HISTORY) historyReturnMode = _uiState.value.sheetMode
+        _uiState.update { it.copy(sheetMode = OverlaySheetMode.HISTORY, sheetVisible = true) }
+    }
+
+    fun leaveHistory() {
+        _uiState.update { it.copy(sheetMode = historyReturnMode) }
+    }
+
+    fun openHistoryResult(id: String) {
+        val state = _uiState.value
+        if (state.working || id in state.busyHistoryIds) return
+        val result = state.history.firstOrNull { it.id == id } ?: return
+        _uiState.update {
+            it.copy(result = result, selectedBitmap = null, liveOcrText = result.extractedText,
+                liveAnswerText = result.answer, sheetMode = OverlaySheetMode.RESULT,
+                followUpDraft = "", sendingFollowUp = false, error = null)
+        }
+        viewModelScope.launch {
+            val bitmap = withContext(Dispatchers.IO) { result.loadHistoryBitmaps().firstOrNull() }
+            _uiState.update { if (it.result?.id == id) it.copy(selectedBitmap = bitmap) else it }
+        }
+    }
+
+    fun handlePanelBack() {
+        if (_uiState.value.sheetMode == OverlaySheetMode.HISTORY) leaveHistory() else closeSheet()
     }
 
     fun closeSheet() {
-        _uiState.update { it.copy(sheetVisible = false, error = null) }
+        _uiState.update { it.copy(sheetVisible = false, settingsMenuVisible = false) }
     }
 
     fun consumeAutoCompletedState() {
@@ -201,6 +334,7 @@ internal class OverlayViewModel(
      * 进入多页截图模式
      */
     fun enterMultiPageCaptureMode() {
+        if (_uiState.value.working || _uiState.value.capturing) return
         multiPageCaptureController.enter()
     }
 
@@ -231,7 +365,11 @@ internal class OverlayViewModel(
         
         multiPageCaptureController.markSendCaptures()
         AppDebugLogStore.i(tag, "sendCaptures dispatched SendCaptures, new state=${bubbleStateMachine.currentState::class.simpleName}")
-        autoProcessingController.processBitmaps(bitmaps)
+        if (_uiState.value.launchMode == CaptureLaunchMode.NORMAL) {
+            answerController.process(bitmaps)
+        } else {
+            autoProcessingController.processBitmaps(bitmaps)
+        }
     }
 
     /**
@@ -284,6 +422,10 @@ internal class OverlayViewModel(
 
     fun toggleWebSearch() {
         settingsController.toggleWebSearch()
+    }
+
+    fun setReasoningEffort(effort: `fun`.kirari.llm.core.ReasoningEffort) {
+        viewModelScope.launch { repository.update { it.copy(reasoningEffort = effort) } }
     }
 
     fun selectAssistant(assistantId: String) = settingsController.selectAssistant(assistantId)

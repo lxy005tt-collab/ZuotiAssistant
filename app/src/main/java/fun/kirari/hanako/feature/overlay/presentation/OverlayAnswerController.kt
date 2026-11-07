@@ -15,6 +15,7 @@ import `fun`.kirari.hanako.solve.model.WorkflowTaskStatus
 import `fun`.kirari.hanako.core.model.loadHistoryBitmaps
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.takeWhile
@@ -29,12 +30,14 @@ internal class OverlayAnswerController(
 ) {
     private val tag = "HanakoOverlayAnswer"
     private var activeObservation: Job? = null
+    private var activeTaskId: String? = null
 
     fun process(bitmap: Bitmap) {
         process(listOf(bitmap))
     }
 
     fun process(bitmaps: List<Bitmap>) {
+        if (uiState.value.working) return
         val firstBitmap = bitmaps.firstOrNull() ?: return
         val state = uiState.value
         AppDebugLogStore.i(tag, "process start route=${state.settings.processingRoute} bitmapCount=${bitmaps.size}")
@@ -46,8 +49,11 @@ internal class OverlayAnswerController(
                 result = null,
                 error = null,
                 working = true,
+                sendingFollowUp = false,
+                followUpDraft = "",
                 sheetVisible = true,
-                sheetMode = OverlaySheetMode.RESULT
+                sheetMode = OverlaySheetMode.RESULT,
+                cardExpanded = false
             )
         }
         val handle = runCatching {
@@ -58,7 +64,7 @@ internal class OverlayAnswerController(
 
     fun regenerateCurrentResult() {
         val existingResult = uiState.value.result ?: return
-        if (existingResult.automationAction != null || uiState.value.working) return
+        if (existingResult.automationAction != null || uiState.value.working || existingResult.id in uiState.value.busyHistoryIds) return
         val bitmaps = existingResult.loadHistoryBitmaps()
         val firstBitmap = bitmaps.firstOrNull()
         if (firstBitmap == null) {
@@ -79,12 +85,50 @@ internal class OverlayAnswerController(
         }
         val handle = runCatching {
             solveOperations.regenerate(uiState.value.settings, existingResult, bitmaps)
-        }.onFailure(::showStartFailure).getOrNull() ?: return
+        }.onFailure(::showStartFailure).getOrNull()
+        if (handle == null) {
+            uiState.update { it.copy(working = false) }
+            return
+        }
         observe(handle)
+    }
+
+    fun sendFollowUp(retry: Boolean = false) {
+        val state = uiState.value
+        val result = state.result ?: return
+        if (state.working || result.id in state.busyHistoryIds) return
+        val prompt = state.followUpDraft.trim()
+        if (!retry && prompt.isBlank()) return
+        uiState.update { it.copy(working = true, sendingFollowUp = true, error = null) }
+        scope.launch {
+            try {
+                val handle = if (retry) {
+                    solveOperations.retryLatestConversation(state.settings, result.id)
+                } else {
+                    solveOperations.continueConversation(state.settings, result.id, prompt)
+                }
+                if (handle == null) {
+                    showStartFailure(IllegalStateException("无法开始追问，请检查模型配置或等待当前任务完成"))
+                } else {
+                    if (!retry) uiState.update { it.copy(followUpDraft = "") }
+                    observe(handle)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                showStartFailure(error)
+            }
+        }
+    }
+
+    fun cancel() {
+        activeTaskId?.let(solveOperations::cancelTask)
     }
 
     private fun observe(handle: SolveTaskHandle) {
         activeObservation?.cancel()
+        activeTaskId = handle.taskId
+        bubbleStateMachine.forceState(BubbleState.Processing)
         val job = scope.launch {
             handle.updates
                 .onEach(::applySnapshot)
@@ -93,7 +137,10 @@ internal class OverlayAnswerController(
         }
         activeObservation = job
         job.invokeOnCompletion {
-            if (activeObservation === job) activeObservation = null
+            if (activeObservation === job) {
+                activeObservation = null
+                activeTaskId = null
+            }
         }
     }
 
@@ -107,6 +154,7 @@ internal class OverlayAnswerController(
                 uiState.update {
                     it.copy(
                         working = false,
+                        sendingFollowUp = false,
                         result = result,
                         liveOcrText = result.extractedText,
                         liveAnswerText = result.answer,
@@ -123,16 +171,19 @@ internal class OverlayAnswerController(
                 uiState.update {
                     it.copy(
                         working = false,
+                        sendingFollowUp = false,
                         autoRunState = AutoRunState.IDLE,
                         pendingVibrationLetters = null,
                         error = message
                     )
                 }
+                bubbleStateMachine.forceState(BubbleState.Idle)
             }
             WorkflowTaskStatus.CANCELLED -> {
                 uiState.update {
                     it.copy(
                         working = false,
+                        sendingFollowUp = false,
                         autoRunState = AutoRunState.IDLE,
                         pendingVibrationLetters = null
                     )
@@ -154,6 +205,7 @@ internal class OverlayAnswerController(
 
     private fun showStartFailure(error: Throwable) {
         AppDebugLogStore.e(tag, "task start failed", error)
-        uiState.update { it.copy(working = false, error = error.message ?: "处理失败") }
+        uiState.update { it.copy(working = false, sendingFollowUp = false, error = error.message ?: "处理失败") }
+        bubbleStateMachine.forceState(BubbleState.Idle)
     }
 }

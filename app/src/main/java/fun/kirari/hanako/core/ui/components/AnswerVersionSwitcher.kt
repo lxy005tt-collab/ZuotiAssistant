@@ -49,7 +49,7 @@ internal fun AnswerActionBar(
     onNextVersion: () -> Unit,
     onSelectSource: (() -> Unit)? = null,
     sourceSelectionEnabled: Boolean = true,
-    onCopy: () -> Unit,
+    onCopy: (() -> Unit)?,
     onRegenerate: () -> Unit
 ) {
     Row(

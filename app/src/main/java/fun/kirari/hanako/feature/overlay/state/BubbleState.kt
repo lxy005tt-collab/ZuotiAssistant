@@ -59,6 +59,7 @@ sealed class BubbleState {
  * 悬浮球菜单项定义
  */
 sealed class BubbleMenuItem {
+    data object ShowAnswer : BubbleMenuItem()
     /** OCR/视觉模式切换 */
     data object ToggleRoute : BubbleMenuItem()
     /** 联网搜索开关 */

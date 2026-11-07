@@ -53,7 +53,7 @@ internal fun AnswerActionButtons(
     canRegenerate: Boolean,
     onSelectSource: (() -> Unit)?,
     sourceSelectionEnabled: Boolean,
-    onCopy: () -> Unit,
+    onCopy: (() -> Unit)?,
     onRegenerate: () -> Unit
 ) {
     Row(
@@ -68,7 +68,7 @@ internal fun AnswerActionButtons(
                 onClick = onSelectSource
             )
         }
-        CopyFeedbackAction(onCopy = onCopy)
+        if (onCopy != null) CopyFeedbackAction(onCopy = onCopy)
         if (canRegenerate) {
             AnswerIconAction(
                 icon = Icons.Default.Refresh,

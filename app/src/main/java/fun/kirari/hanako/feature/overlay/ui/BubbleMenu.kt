@@ -1,8 +1,6 @@
 package `fun`.kirari.hanako.feature.overlay.ui
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -43,13 +43,13 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 private val MenuRadius = 104.dp
-private val ButtonSize = 46.dp
+private val ButtonSize = 48.dp
 private val ContainerWidth = 58.dp
 private val ContainerHeight = 58.dp
 private val ScreenMargin = 8.dp
-private val PrimaryPurple = Color(0xFF6750A4)
+private val PrimaryBlue = Color(0xD9368DFF)
 private val OnPrimary = Color.White
-private val InactiveSurface = Color.White
+private val InactiveSurface = Color.White.copy(alpha = 0.84f)
 private val OnInactive = Color(0xFF1D1B20)
 private val DisabledSurface = Color(0xFFE0E0E0)
 private val OnDisabled = Color(0xFF9E9E9E)
@@ -77,7 +77,9 @@ fun BubbleMenu(
     viewportHeightPx: Float? = null,
     closeSignal: Int = 0,
     showPreviewLabels: Boolean = false,
-    previewLabelStartProgress: Float = 0.62f
+    previewLabelStartProgress: Float = 0.62f,
+    captureCenter: Pair<Int, Int>? = null,
+    onCapture: (() -> Unit)? = null
 ) {
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
@@ -124,20 +126,14 @@ fun BubbleMenu(
     LaunchedEffect(Unit) {
         expansionProgress.animateTo(
             targetValue = 1f,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioLowBouncy,
-                stiffness = Spring.StiffnessLow
-            )
+            animationSpec = tween(durationMillis = 160)
         )
     }
     LaunchedEffect(closing) {
         if (closing) {
             expansionProgress.animateTo(
                 targetValue = 0f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMedium
-                )
+                animationSpec = tween(durationMillis = 100)
             )
             onDismissFinished()
         }
@@ -163,7 +159,7 @@ fun BubbleMenu(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.12f * expansionProgress.value))
+            .background(Color.Black.copy(alpha = 0.04f * expansionProgress.value))
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
@@ -171,7 +167,7 @@ fun BubbleMenu(
             )
     ) {
         entries.forEachIndexed { index, entry ->
-            val angleDeg = startAngle + index * step
+            val angleDeg = startAngle + index * step - 24f * (1f - expansionProgress.value)
             val angleRad = Math.toRadians(angleDeg)
             val currentRadius = clampedRadius * expansionProgress.value
             val targetX = anchorCenterX + (currentRadius.value * cos(angleRad)).dp
@@ -184,12 +180,11 @@ fun BubbleMenu(
                 entry = entry,
                 centerX = targetX,
                 centerY = targetY,
-                index = index,
-                totalCount = entries.size,
+                progress = expansionProgress.value,
                 enabled = enabled,
                 checked = checked,
-                closing = closing,
                 onClick = {
+                    if (closing) return@MenuItem
                     onItemClick(entry.item)
                     requestClose()
                 }
@@ -208,6 +203,12 @@ fun BubbleMenu(
                     alpha = labelAlpha
                 )
             }
+        }
+        captureCenter?.let { center ->
+            Box(Modifier.offset(with(density) { center.first.toDp() } - 24.dp,
+                with(density) { center.second.toDp() } - 24.dp)
+                .size(48.dp).semantics { contentDescription = "截取整屏并解题" }
+                .clickable(enabled = onCapture != null) { onCapture?.invoke() })
         }
     }
 }
@@ -330,31 +331,14 @@ private fun MenuItem(
     entry: BubbleMenuEntry,
     centerX: Dp,
     centerY: Dp,
-    index: Int,
-    totalCount: Int,
+    progress: Float,
     enabled: Boolean,
     checked: Boolean,
-    closing: Boolean,
     onClick: () -> Unit
 ) {
-    val scale = remember { Animatable(0f) }
-    val alpha = remember { Animatable(0f) }
-
-    LaunchedEffect(Unit) {
-        scale.animateTo(1f, tween(180, delayMillis = index * 35))
-        alpha.animateTo(1f, tween(180, delayMillis = index * 35))
-    }
-    LaunchedEffect(closing) {
-        if (closing) {
-            val reverseDelay = (totalCount - 1 - index) * 35
-            scale.animateTo(0f, tween(160, delayMillis = reverseDelay))
-            alpha.animateTo(0f, tween(160, delayMillis = reverseDelay))
-        }
-    }
-
     val backgroundColor = when {
         !enabled -> DisabledSurface
-        checked -> PrimaryPurple
+        checked -> PrimaryBlue
         else -> InactiveSurface
     }
     val contentColor = when {
@@ -369,8 +353,8 @@ private fun MenuItem(
         modifier = Modifier
             .offset(topLeftX, topLeftY)
             .size(ContainerWidth, ContainerHeight)
-            .scale(scale.value)
-            .alpha(alpha.value),
+            .scale(0.7f + 0.3f * progress)
+            .alpha(progress),
         contentAlignment = Alignment.TopCenter
     ) {
         Box(

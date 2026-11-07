@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,7 +40,7 @@ internal fun ModeModelRow(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(24.dp),
+            .height(48.dp),
         contentAlignment = Alignment.Center
     ) {
         androidx.compose.animation.AnimatedContent(
@@ -54,7 +55,7 @@ internal fun ModeModelRow(
             ) {
                 Text(
                     text = if (currentRoute == ProcessingRoute.OCR_THEN_LLM) "OCR模式" else "多模态模式",
-                    modifier = Modifier.clickable(onClick = onToggleProcessingRoute),
+                    modifier = Modifier.clickable(onClick = onToggleProcessingRoute).padding(vertical = 12.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1
                 )
@@ -74,7 +75,8 @@ internal fun ModeModelRow(
                                 purpose = ModelPurpose.TEXT
                             )
                         ),
-                        onClick = onPickModel
+                        onClick = onPickModel,
+                        modifier = Modifier.weight(1f)
                     )
                 } else {
                     ModelConfigCarousel(
@@ -86,7 +88,8 @@ internal fun ModeModelRow(
                                 purpose = ModelPurpose.VISION
                             )
                         ),
-                        onClick = onPickModel
+                        onClick = onPickModel,
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
@@ -97,7 +100,8 @@ internal fun ModeModelRow(
 @Composable
 private fun ModelConfigCarousel(
     items: List<ModelConfigItem>,
-    onClick: (ModelPurpose) -> Unit
+    onClick: (ModelPurpose) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var index by remember(items) { mutableStateOf(0) }
     LaunchedEffect(items) {
@@ -108,9 +112,7 @@ private fun ModelConfigCarousel(
         }
     }
     Box(
-        modifier = Modifier
-            .width(220.dp)
-            .height(20.dp),
+        modifier = modifier.height(48.dp),
         contentAlignment = Alignment.CenterStart
     ) {
         androidx.compose.animation.AnimatedContent(
@@ -161,7 +163,8 @@ private fun ModelConfigText(
         text = text,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 1,

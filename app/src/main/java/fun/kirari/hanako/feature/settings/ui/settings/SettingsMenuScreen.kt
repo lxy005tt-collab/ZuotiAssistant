@@ -1,5 +1,8 @@
 package `fun`.kirari.hanako.feature.settings.ui.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -22,13 +25,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import `fun`.kirari.hanako.BuildConfig
+import `fun`.kirari.hanako.app.ProjectInfo
 
 @Composable
 fun SettingsMenuScreen(
@@ -79,7 +85,7 @@ fun SettingsMenuScreen(
         item {
             SettingsEntryCard(
                 title = "更多",
-                subtitle = "自动模式、屏幕录制方式、网络兼容",
+                subtitle = "悬浮窗、答案显示、高级连接",
                 icon = Icons.Default.SmartToy,
                 onClick = onNavigateMore
             )
@@ -93,6 +99,30 @@ fun SettingsMenuScreen(
                     onClick = onNavigateDebugLogs
                 )
             }
+        }
+        item { ProjectAttribution() }
+    }
+}
+
+@Composable
+private fun ProjectAttribution() {
+    val context = LocalContext.current
+    fun openLink(url: String) {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .onFailure { Toast.makeText(context, "没有可用的浏览器", Toast.LENGTH_SHORT).show() }
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(ProjectInfo.NAME, style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface)
+        Text("基于 HanakoAI 改良 · AGPL-3.0", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = { openLink(ProjectInfo.REPOSITORY_URL) }) { Text("源代码") }
+            TextButton(onClick = { openLink(ProjectInfo.UPSTREAM_URL) }) { Text("原项目") }
+            TextButton(onClick = { openLink(ProjectInfo.LICENSE_URL) }) { Text("许可证") }
         }
     }
 }

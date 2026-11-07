@@ -34,6 +34,14 @@ private fun codeRangesIn(content: String): List<IntRange> {
     return codeBlocks
 }
 
+/** Copy the answer itself, retaining literal examples inside Markdown code blocks. */
+internal fun unwrapCopyMarkers(content: String): String {
+    val codeBlocks = codeRangesIn(content)
+    return copyMarkerRegex.replace(content) { match ->
+        if (codeBlocks.any { match.range.first in it }) match.value else match.groupValues[1]
+    }
+}
+
 private fun replaceCopyMarkers(content: String): Pair<String, List<CopyMarkerToken>> {
     val codeBlocks = codeRangesIn(content)
     fun inCodeBlock(index: Int): Boolean = codeBlocks.any { index in it }
