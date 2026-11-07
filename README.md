@@ -6,7 +6,9 @@
 
 左球打开快捷菜单，右球截取整屏并交给 AI。答案在同一个悬浮窗口里逐字显示，复制、重试和追问也都可以在小窗中完成。
 
-当前源码版本为 `1.0.0`。安装包见[发行页面](https://github.com/lxy005tt-collab/ZuotiAssistant/releases)。本项目不是 HanakoAI 官方发行版。
+当前版本为 `1.0.0`：[下载完整版（推荐）](https://github.com/lxy005tt-collab/ZuotiAssistant/releases/download/v1.0.0/ZuotiAssistant-1.0.0-full-arm64-v8a.apk) · [全部安装包与更新说明](https://github.com/lxy005tt-collab/ZuotiAssistant/releases/tag/v1.0.0)。本项目不是 HanakoAI 官方发行版。
+
+<!-- App update fallback: [[Download 1.0.0](https://github.com/lxy005tt-collab/ZuotiAssistant/releases/download/v1.0.0/ZuotiAssistant-1.0.0-full-arm64-v8a.apk)] [[View Release Notes](https://github.com/lxy005tt-collab/ZuotiAssistant/releases/tag/v1.0.0)] -->
 
 ## 相比原版的主要改良
 
@@ -25,7 +27,7 @@
 
 新用户优先选择 `full-arm64-v8a` 安装包（Android 7.0 及以上）。`lite` 不含本地 OCR，`armeabi-v7a` 用于支持 32 位应用的旧设备。
 
-已有「做题小助手 测试版」的用户选择 `full-dev-upgrade-arm64-v8a`，可保留原包名、签名、配置和历史记录。该兼容包启用与正式版相同的代码优化，但沿用旧测试证书，仅供已有测试版用户覆盖升级；新用户使用普通正式包。请勿先卸载旧应用。
+已有「做题小助手 测试版」的用户选择[旧测试版升级包](https://github.com/lxy005tt-collab/ZuotiAssistant/releases/download/v1.0.0/ZuotiAssistant-1.0.0-full-dev-upgrade-arm64-v8a.apk)，可保留原包名、签名、配置和历史记录。该兼容包启用与正式版相同的代码优化，但沿用旧测试证书，仅供已有测试版用户覆盖升级；新用户使用普通正式包。请勿先卸载旧应用。
 
 1. 安装应用，在「设置 → 模型提供方」填写 API 地址、API Key 和接口类型。
 2. 在「模型设置」中选择多模态模型。默认模式会发送截图，因此所选模型必须支持图像输入；也可改用 OCR 模式。
