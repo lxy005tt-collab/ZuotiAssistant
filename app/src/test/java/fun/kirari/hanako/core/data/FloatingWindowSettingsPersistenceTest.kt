@@ -4,6 +4,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FloatingWindowSettingsPersistenceTest {
@@ -17,6 +18,7 @@ class FloatingWindowSettingsPersistenceTest {
         assertEquals(FloatingWindowSettings(), settings.floatingWindow)
         assertEquals(ScreenCaptureMethod.SHIZUKU_ADB, settings.screenCaptureMethod)
         assertFalse(settings.automation.bubbleMenuEnabled)
+        assertTrue(settings.overlayStealthEnabled)
         assertEquals(true, settings.trustAllHttpsCertificates)
     }
 
@@ -37,5 +39,14 @@ class FloatingWindowSettingsPersistenceTest {
         assertEquals(60, restored.floatingWindow.sizePercent)
         assertEquals(60, restored.floatingWindow.backgroundOpacityPercent)
         assertEquals(22, restored.floatingWindow.answerTextSizeSp)
+    }
+
+    @Test
+    fun turningStealthOffSurvivesRestartAndResettingAppearanceDoesNotEnableIt() {
+        val settings = AppSettings(overlayStealthEnabled = false,
+            floatingWindow = FloatingWindowSettings(sizePercent = 90))
+        val restored = json.decodeFromString<AppSettings>(json.encodeToString(settings)).normalize()
+        assertFalse(restored.overlayStealthEnabled)
+        assertFalse(restored.copy(floatingWindow = FloatingWindowSettings()).normalize().overlayStealthEnabled)
     }
 }

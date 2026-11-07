@@ -20,6 +20,8 @@ fun HeroSection(
     overlayEnabled: Boolean,
     hasOverlayPermission: Boolean,
     captureMethod: ScreenCaptureMethod,
+    stealthEnabled: Boolean,
+    onToggleStealth: (Boolean) -> Unit,
     staticModeEnabled: Boolean,
     route: ProcessingRoute,
     onSelectRoute: (ProcessingRoute) -> Unit,
@@ -34,6 +36,8 @@ fun HeroSection(
         ProcessingRouteMenu(route, onSelectRoute)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         CaptureMethodSelector(captureMethod, overlayEnabled, onSelectCaptureMethod)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        StealthModeRow(stealthEnabled, overlayEnabled, onToggleStealth)
         if (captureMethod == ScreenCaptureMethod.SHIZUKU_ADB) {
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
             ShizukuStatusCard()

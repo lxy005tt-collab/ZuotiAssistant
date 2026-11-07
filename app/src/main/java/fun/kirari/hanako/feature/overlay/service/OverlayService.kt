@@ -82,6 +82,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                 floatingWindowSettings = {
                     overlayViewModel.uiState.value.settings.floatingWindow
                 },
+                stealthEnabled = { overlayViewModel.uiState.value.settings.overlayStealthEnabled },
                 onOutsideTap = { overlayViewModel.closeSheet() },
                 onConfigurationUpdate = { panelWindowController?.reposition() }
             )
@@ -99,6 +100,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             val regionController = RegionSelectionWindowController(
                 context = this, windowManager = windowManager, lifecycleOwner = this,
                 viewModelStoreOwner = this, savedStateRegistryOwner = this,
+                stealthEnabled = { overlayViewModel.uiState.value.settings.overlayStealthEnabled },
                 onCancel = overlayViewModel::cancelRegionSelection,
                 onConfirm = overlayViewModel::confirmRegionSelection
             )

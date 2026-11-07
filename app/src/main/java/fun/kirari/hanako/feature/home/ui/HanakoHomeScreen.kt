@@ -27,7 +27,8 @@ internal fun HanakoHomeScreen(
     onOpenOverlayPermission: () -> Unit,
     onToggleOverlay: (Boolean) -> Unit,
     onSelectRoute: (ProcessingRoute) -> Unit,
-    onSelectCaptureMethod: (ScreenCaptureMethod) -> Unit
+    onSelectCaptureMethod: (ScreenCaptureMethod) -> Unit,
+    onToggleStealth: (Boolean) -> Unit
 ) {
     HanakoHomeTheme {
         val context = LocalContext.current
@@ -41,6 +42,8 @@ internal fun HanakoHomeScreen(
                     overlayEnabled = overlayEnabled,
                     hasOverlayPermission = hasOverlayPermission,
                     captureMethod = settings.screenCaptureMethod,
+                    stealthEnabled = settings.overlayStealthEnabled,
+                    onToggleStealth = onToggleStealth,
                     staticModeEnabled = settings.automation.staticModeEnabled,
                     route = settings.processingRoute,
                     onSelectRoute = onSelectRoute,

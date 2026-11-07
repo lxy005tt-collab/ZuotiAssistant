@@ -42,6 +42,7 @@ internal class BubbleWindowController(
     private val onSettingsTap: () -> Unit,
     private val onCaptureTap: () -> Unit,
     private val floatingWindowSettings: () -> FloatingWindowSettings,
+    private val stealthEnabled: () -> Boolean,
     private val onOutsideTap: () -> Unit,
     private val onConfigurationUpdate: () -> Unit
 ) {
@@ -68,6 +69,7 @@ internal class BubbleWindowController(
     private var visualBounds: CardBounds? = null
     private var expansionFraction = 0f
     private var captureExclusionApplied = false
+    private var captureProtection: WindowCaptureExclusion? = null
     private val clipRect = Rect()
     private val actualWindowLocation = IntArray(2)
     private val positionBeforeDraw = ViewTreeObserver.OnPreDrawListener {
@@ -97,7 +99,11 @@ internal class BubbleWindowController(
                 anchorY = dragStartY + dy
                 layoutWindow(animate = false)
             },
-            onConfigurationUpdate = { onConfigurationUpdate(); layoutWindow(animate = false) }).apply {
+            onConfigurationUpdate = {
+                captureProtection?.refresh(force = true)
+                onConfigurationUpdate()
+                layoutWindow(animate = false)
+            }).apply {
             updateAppearance(appearance.sizeScale, appearance.backgroundOpacity)
         }
         val host = object : FrameLayout(context) {
@@ -140,7 +146,7 @@ internal class BubbleWindowController(
         }
         windowManager.addView(host, params)
         host.viewTreeObserver.addOnPreDrawListener(positionBeforeDraw)
-        AntiScreenshotHelper.applyTo(host)
+        captureProtection = WindowCaptureExclusion(host, stealthEnabled())
         layoutWindow(animate = false)
     }
 
@@ -219,6 +225,8 @@ internal class BubbleWindowController(
     }
 
     fun update(state: OverlayUiState) {
+        captureProtection?.setStealthEnabled(state.settings.overlayStealthEnabled)
+        captureProtection?.setTemporaryExclusion(state.capturing)
         val appearance = state.settings.floatingWindow
         if (appliedAppearance != appearance) {
             appliedAppearance = appearance
@@ -238,12 +246,15 @@ internal class BubbleWindowController(
     fun prepareForCapture(): Boolean {
         val host = root ?: return false
         // Reapply to the current surface, which may have been replaced after rotation.
-        captureExclusionApplied = AntiScreenshotHelper.excludeFromCapture(host)
+        captureProtection?.setTemporaryExclusion(true)
+        captureExclusionApplied = captureProtection?.refresh() == true
         host.visibility = if (captureExclusionApplied) View.VISIBLE else View.INVISIBLE
         return captureExclusionApplied
     }
 
     fun destroy() {
+        captureProtection?.close()
+        captureProtection = null
         cancelBoundsAnimation()
         closing = false
         root?.let {

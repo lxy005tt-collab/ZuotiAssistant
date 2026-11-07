@@ -165,6 +165,7 @@ data class AppSettings(
     val processingRoute: ProcessingRoute = ProcessingRoute.MULTIMODAL_DIRECT,
     val reasoningEffort: ReasoningEffort = ReasoningEffort.AUTO,
     val screenCaptureMethod: ScreenCaptureMethod = ScreenCaptureMethod.MEDIA_PROJECTION,
+    val overlayStealthEnabled: Boolean = true,
     val automation: AutomationSettings = AutomationSettings(),
     val floatingWindow: FloatingWindowSettings = FloatingWindowSettings(),
     val trustAllHttpsCertificates: Boolean = false,

@@ -127,6 +127,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         settingsEditorController.setScreenCaptureMethod(method)
     }
 
+    fun setOverlayStealthEnabled(enabled: Boolean) {
+        viewModelScope.launch { repository.update { it.copy(overlayStealthEnabled = enabled) } }
+    }
+
     fun updateFloatingWindowSettings(settings: FloatingWindowSettings) {
         settingsEditorController.updateFloatingWindowSettings(settings)
     }

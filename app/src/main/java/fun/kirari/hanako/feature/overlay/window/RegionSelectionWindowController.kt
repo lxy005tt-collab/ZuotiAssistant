@@ -31,14 +31,19 @@ internal class RegionSelectionWindowController(
     private val lifecycleOwner: LifecycleOwner,
     private val viewModelStoreOwner: ViewModelStoreOwner,
     private val savedStateRegistryOwner: SavedStateRegistryOwner,
+    private val stealthEnabled: () -> Boolean,
     private val onCancel: () -> Unit,
     private val onConfirm: (Bitmap) -> Unit
 ) {
     private var root: FrameLayout? = null
     private var source: Bitmap? = null
+    private var captureProtection: WindowCaptureExclusion? = null
 
     fun show(bitmap: Bitmap) {
-        if (root != null && source === bitmap) return
+        if (root != null && source === bitmap) {
+            captureProtection?.setStealthEnabled(stealthEnabled())
+            return
+        }
         dismiss()
         val host = object : FrameLayout(context) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -81,10 +86,12 @@ internal class RegionSelectionWindowController(
             if (Build.VERSION.SDK_INT >= 30) setFitInsetsTypes(0)
         }
         windowManager.addView(host, layout)
-        AntiScreenshotHelper.applyTo(host)
+        captureProtection = WindowCaptureExclusion(host, stealthEnabled())
     }
 
     fun dismiss() {
+        captureProtection?.close()
+        captureProtection = null
         root?.let { if (it.isAttachedToWindow) windowManager.removeViewImmediate(it) }
         root = null
         source = null

@@ -321,6 +321,7 @@ fun HanakoApp(viewModel: AppViewModel) {
                             pagerState = mainPagerState,
                             hanakoContent = {
                                 HanakoHomeScreen(
+                                    onToggleStealth = viewModel::setOverlayStealthEnabled,
                                     settings = settings,
                                     overlayEnabled = overlayEnabled,
                                     hasOverlayPermission = hasOverlayPermission,

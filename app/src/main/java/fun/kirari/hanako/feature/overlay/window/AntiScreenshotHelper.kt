@@ -9,6 +9,35 @@ import org.lsposed.hiddenapibypass.HiddenApiBypass
 internal object AntiScreenshotHelper {
     private const val TAG = "AntiScreenshot"
     private var initialized = false
+    private class Access {
+        val viewRoot = View::class.java.getDeclaredMethod("getViewRootImpl").apply { isAccessible = true }
+        val surface = Class.forName("android.view.ViewRootImpl").getMethod("getSurfaceControl")
+        val skip = SurfaceControl.Transaction::class.java.getMethod(
+            "setSkipScreenshot", SurfaceControl::class.java, java.lang.Boolean.TYPE)
+        // ViewRootImpl may reuse the Java wrapper when replacing its native surface.
+        val nativeObject = runCatching {
+            SurfaceControl::class.java.getDeclaredField("mNativeObject").apply { isAccessible = true }
+        }.getOrNull()
+    }
+    private val access by lazy { initialize(); runCatching { Access() } }
+
+    internal data class SurfaceTarget(val control: SurfaceControl, val nativeHandle: Long)
+
+    fun currentSurface(view: View): SurfaceTarget? {
+        if (!view.isAttachedToWindow) return null
+        val api = access.getOrThrow()
+        val viewRoot = api.viewRoot.invoke(view) ?: return null
+        val surface = api.surface.invoke(viewRoot) as? SurfaceControl ?: return null
+        if (!surface.isValid) return null
+        return SurfaceTarget(surface, runCatching { api.nativeObject?.getLong(surface) }.getOrNull() ?: 0L)
+    }
+
+    fun setExcluded(target: SurfaceTarget, excluded: Boolean) {
+        SurfaceControl.Transaction().use { transaction ->
+            access.getOrThrow().skip.invoke(transaction, target.control, excluded)
+            transaction.apply()
+        }
+    }
 
     fun initialize() {
         if (initialized) return
@@ -46,24 +75,8 @@ internal object AntiScreenshotHelper {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !view.isAttachedToWindow) return false
         initialize()
         return runCatching {
-            val getVri = View::class.java.getDeclaredMethod("getViewRootImpl")
-            getVri.isAccessible = true
-            val vri = getVri.invoke(view) ?: return false
-
-            val getSc = vri.javaClass.getMethod("getSurfaceControl")
-            val sc = getSc.invoke(vri) as? SurfaceControl ?: return false
-            if (!sc.isValid) return false
-
-            val txClass = Class.forName("android.view.SurfaceControl\$Transaction")
-            val setSkipMethod = txClass.getMethod(
-                "setSkipScreenshot",
-                SurfaceControl::class.java,
-                java.lang.Boolean.TYPE
-            )
-            SurfaceControl.Transaction().use { transaction ->
-                setSkipMethod.invoke(transaction, sc, true)
-                transaction.apply()
-            }
+            val target = currentSurface(view) ?: return false
+            setExcluded(target, true)
             Log.d(TAG, "Own overlay layer excluded from screen capture")
             true
         }.onFailure {
