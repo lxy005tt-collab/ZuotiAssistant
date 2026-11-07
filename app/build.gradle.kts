@@ -50,8 +50,8 @@ android {
         applicationId = "fun.kirari.hanako"
         minSdk = 24
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.0.0"
+        versionCode = 21
+        versionName = "1.0.1"
         manifestPlaceholders["appLabel"] = "@string/app_name"
 
         buildConfigField("boolean", "SHOW_DEBUG_LOGS", showDebugLogs.toString())
@@ -111,7 +111,7 @@ android {
         create("compat") {
             initWith(getByName("release"))
             applicationIdSuffix = ".dev"
-            manifestPlaceholders["appLabel"] = "做题小助手 测试版"
+            manifestPlaceholders["appLabel"] = "@string/app_name"
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
         }
