@@ -52,7 +52,8 @@ internal fun CompactOverlaySettings(
         Row(Modifier.fillMaxWidth().onSizeChanged { height = it.height }
             .padding(horizontal = 6.dp, vertical = 4.dp)) {
             BubbleMenuRegistry.entries.forEach { entry ->
-                val enabled = entry.isEnabled(settings) && (!busy || entry.item != BubbleMenuItem.SelectRegion)
+                val enabled = entry.isEnabled(settings) && (!busy || entry.item !in
+                    listOf(BubbleMenuItem.SelectRegion, BubbleMenuItem.NewConversation))
                 Column(
                     Modifier.weight(1f).heightIn(min = 48.dp)
                         .clip(RoundedCornerShape(12.dp))

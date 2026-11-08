@@ -38,6 +38,9 @@ data class ProcessingResult(
         get() = screenshotPaths.ifEmpty {
             screenshotPath?.let(::listOf) ?: emptyList()
         }
+
+    val conversationScreenshotPaths: List<String>
+        get() = (allScreenshotPaths + followUpTurns.flatMap { it.screenshotPaths }).distinct()
 }
 
 @Serializable
@@ -45,6 +48,8 @@ data class FollowUpTurn(
     val id: String = UUID.randomUUID().toString(),
     val userText: String,
     val quotedFragments: List<QuotedFragment> = emptyList(),
+    val screenshotPaths: List<String> = emptyList(),
+    val extractedText: String = "",
     val assistantText: String = "",
     val assistantVersions: List<AnswerVersion> = emptyList(),
     val pendingAssistantText: String = "",

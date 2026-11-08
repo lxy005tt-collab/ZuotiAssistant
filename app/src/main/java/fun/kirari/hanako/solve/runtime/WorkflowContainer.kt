@@ -7,6 +7,10 @@ import `fun`.kirari.hanako.core.network.UnifiedLLMClient
 import `fun`.kirari.hanako.core.network.search.SearchOrchestrator
 import `fun`.kirari.hanako.solve.workflow.ProcessingPipeline
 import `fun`.kirari.hanako.solve.workflow.ConversationWorkflow
+import `fun`.kirari.hanako.solve.workflow.StoredConversationAttachments
+import `fun`.kirari.hanako.solve.workflow.OcrNode
+import `fun`.kirari.hanako.solve.workflow.WebSearchAgentTool
+import `fun`.kirari.hanako.core.network.search.SearchContext
 import `fun`.kirari.hanako.solve.workflow.HanakoWorkflowFactory
 import `fun`.kirari.hanako.solve.application.SolveOperations
 import kotlinx.coroutines.CoroutineScope
@@ -33,7 +37,15 @@ internal class WorkflowContainer(
     )
     private val conversationWorkflow = ConversationWorkflow(
         unifiedClient = unifiedLLMClient,
-        pipeline = pipeline
+        pipeline = pipeline,
+        attachments = StoredConversationAttachments(OcrNode(unifiedLLMClient, localOcrManager)),
+        toolsProvider = { models ->
+            if (!models.webSearchSettings.enabled || searchOrchestrator == null) emptyList()
+            else listOf(WebSearchAgentTool(searchOrchestrator) {
+                SearchContext(query = "", settings = models.webSearchSettings,
+                    trustAllHttps = models.trustAllHttpsCertificates, isAutomation = false)
+            })
+        }
     )
     private val resultStore = WorkflowResultStore(
         repository = historyRepository,

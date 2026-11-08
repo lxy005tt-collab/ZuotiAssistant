@@ -30,4 +30,14 @@ class OverlayResultContentTest {
         assertTrue(state.hasAnswerBubbleContent())
         assertEquals("A", state.currentAnswerText())
     }
+
+    @Test
+    fun nextScreenshotKeepsContextButHidesOldBubbleUntilItsReplyArrives() {
+        val state = OverlayUiState(working = true, sendingFollowUp = true,
+            waitingForScreenshotAnswer = true, result = emptyResult.copy(answer = "previous answer"))
+        assertFalse(state.hasAnswerBubbleContent())
+        assertEquals("previous answer", state.currentAnswerText())
+        assertTrue(state.copy(waitingForScreenshotAnswer = false).hasAnswerBubbleContent())
+        assertTrue(state.copy(error = "截图失败").hasAnswerBubbleContent())
+    }
 }

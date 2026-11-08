@@ -98,9 +98,10 @@ internal class SolveOperations(
         historyId: String,
         prompt: String,
         quotedFragments: List<QuotedFragment> = emptyList(),
-        modelSelection: ModelSelection? = null
+        modelSelection: ModelSelection? = null,
+        screenshotPaths: List<String> = emptyList()
     ): SolveTaskHandle? {
-        return startConversation(settings, historyId, ConversationIntent.NewTurn(prompt, quotedFragments), modelSelection)
+        return startConversation(settings, historyId, ConversationIntent.NewTurn(prompt, quotedFragments, screenshotPaths), modelSelection)
     }
 
     suspend fun retryLatestConversation(
@@ -123,7 +124,7 @@ internal class SolveOperations(
             is ConversationIntent.NewTurn -> {
                 val prompt = intent.prompt.trim()
                 if (prompt.isBlank()) return null
-                ConversationIntent.NewTurn(prompt, intent.quotedFragments)
+                intent.copy(prompt = prompt)
             }
             ConversationIntent.RegenerateLatest -> {
                 if (existing.followUpTurns.isEmpty()) return null

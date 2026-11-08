@@ -21,6 +21,8 @@ internal enum class AutoRunState {
     COMPLETED
 }
 
+internal enum class ScreenshotRetry { FULL_SCREEN, REGION }
+
 internal data class OverlayUiState(
     val settings: AppSettings = AppSettings(),
     val screenshot: Bitmap? = null,
@@ -31,6 +33,9 @@ internal data class OverlayUiState(
     val error: String? = null,
     val working: Boolean = false,
     val sendingFollowUp: Boolean = false,
+    val retryCapturePending: Boolean = false,
+    val screenshotRetry: ScreenshotRetry? = null,
+    val waitingForScreenshotAnswer: Boolean = false,
     val followUpDraft: String = "",
     val capturing: Boolean = false,
     val settingsMenuVisible: Boolean = false,

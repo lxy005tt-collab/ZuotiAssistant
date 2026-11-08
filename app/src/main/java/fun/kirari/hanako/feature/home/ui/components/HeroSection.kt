@@ -77,7 +77,7 @@ fun HeroSection(
                     }, style = MaterialTheme.typography.labelLarge)
                 }
             }
-            Text("左球打开菜单，可选择截图区域；右球截取整屏。",
+            Text("每次启动悬浮窗开始新对话，右球截图会延续前文。左球「新题」可重新开始。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (!overlayEnabled && hasOverlayPermission && captureMethod == ScreenCaptureMethod.MEDIA_PROJECTION) {
                 Text("启动时请在系统弹窗中允许共享整个屏幕。", style = MaterialTheme.typography.bodySmall,

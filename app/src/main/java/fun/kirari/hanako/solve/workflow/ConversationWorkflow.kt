@@ -8,10 +8,11 @@ import `fun`.kirari.hanako.core.model.ProcessingRoute
 import `fun`.kirari.hanako.core.model.latestAnswerText
 import `fun`.kirari.hanako.core.model.displayedAssistantVersions
 import `fun`.kirari.hanako.core.model.latestAssistantText
-import `fun`.kirari.hanako.core.model.loadHistoryBitmaps
 import `fun`.kirari.hanako.solve.model.ConversationIntent
 import `fun`.kirari.llm.core.ChatMessage
-import `fun`.kirari.llm.core.LlmEvent
+import `fun`.kirari.hanako.solve.workflow.tools.AgentTool
+import `fun`.kirari.hanako.solve.workflow.tools.ToolContext
+import kotlinx.coroutines.CancellationException
 
 internal data class PreparedConversationTurn(
     val historyId: String,
@@ -21,7 +22,9 @@ internal data class PreparedConversationTurn(
     val model: String,
     val messages: List<ChatMessage>,
     val firstDeltaTimeoutMillis: Long,
-    val trustAllHttpsCertificates: Boolean
+    val trustAllHttpsCertificates: Boolean,
+    val preparationError: Exception? = null,
+    val tools: List<AgentTool> = emptyList()
 )
 
 internal interface ConversationWorkflowEngine {
@@ -40,7 +43,9 @@ internal interface ConversationWorkflowEngine {
 
 internal class ConversationWorkflow(
     private val unifiedClient: UnifiedLLMClient,
-    private val pipeline: ProcessingPipeline
+    private val pipeline: ProcessingPipeline,
+    private val attachments: ConversationAttachments,
+    private val toolsProvider: (ProcessingPipeline.ResolvedModels) -> List<AgentTool> = { emptyList() }
 ) : ConversationWorkflowEngine {
     override suspend fun prepareTurn(
         existingResult: ProcessingResult,
@@ -66,17 +71,15 @@ internal class ConversationWorkflow(
             ProcessingRoute.OCR_THEN_LLM -> models.assistant.textPrompt
             ProcessingRoute.MULTIMODAL_DIRECT -> models.assistant.visionPrompt
         }
-        val (prompt, retainedTurns, retainedVersions) = when (intent) {
-            is ConversationIntent.NewTurn -> Triple(
-                buildQuotedPrompt(intent.prompt, intent.quotedFragments),
+        val (retainedTurns, retainedVersions) = when (intent) {
+            is ConversationIntent.NewTurn -> Pair(
                 existingResult.followUpTurns,
                 emptyList()
             )
             ConversationIntent.RegenerateLatest -> {
                 val latestTurn = existingResult.followUpTurns.lastOrNull()
                     ?: error("找不到要重试的对话轮次")
-                Triple(
-                    latestTurn.userText,
+                Pair(
                     existingResult.followUpTurns.dropLast(1),
                     latestTurn.displayedAssistantVersions()
                 )
@@ -92,19 +95,58 @@ internal class ConversationWorkflow(
                 is ConversationIntent.NewTurn -> intent.quotedFragments
                 ConversationIntent.RegenerateLatest -> existingResult.followUpTurns.lastOrNull()?.quotedFragments.orEmpty()
             },
+            screenshotPaths = when (intent) {
+                is ConversationIntent.NewTurn -> intent.screenshotPaths
+                ConversationIntent.RegenerateLatest -> existingResult.followUpTurns.lastOrNull()?.screenshotPaths.orEmpty()
+            },
+            extractedText = if (intent == ConversationIntent.RegenerateLatest) {
+                existingResult.followUpTurns.lastOrNull()?.extractedText.orEmpty()
+            } else "",
             assistantVersions = retainedVersions,
             modelSummary = pipeline.buildModelSummary(model, provider.name)
         )
-        val started = existingResult.copy(followUpTurns = retainedTurns + pendingTurn)
+        var started = existingResult.copy(followUpTurns = retainedTurns + pendingTurn)
+        val tools = toolsProvider(models)
+        var preparationError: Exception? = null
+        val messages = try {
+            if (existingResult.route == ProcessingRoute.OCR_THEN_LLM) {
+                if (started.extractedText.isBlank() && started.allScreenshotPaths.isNotEmpty()) {
+                    pipeline.validateOcrThenLlmModels(models)
+                    started = started.copy(extractedText = attachments.recognize(started.allScreenshotPaths, models))
+                }
+                // Persist recognized text on its own turn; a retry reuses it, while
+                // an earlier failed OCR turn is recovered before sending new context.
+                for (index in started.followUpTurns.indices) {
+                    val turn = started.followUpTurns[index]
+                    if (turn.screenshotPaths.isNotEmpty() && turn.extractedText.isBlank()) {
+                        pipeline.validateOcrThenLlmModels(models)
+                        val recognized = attachments.recognize(turn.screenshotPaths, models)
+                        started = started.copy(followUpTurns = started.followUpTurns.mapIndexed { i, value ->
+                            if (i == index) value.copy(extractedText = recognized) else value
+                        })
+                    }
+                }
+            }
+            buildMessages(started, if (tools.isNotEmpty()) searchEnabledAssistantPrompt(assistantPrompt) else assistantPrompt)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            // Return the turn with its images even when OCR/loading fails, so the
+            // task manager can save it and retry exactly this turn later.
+            preparationError = error
+            emptyList()
+        }
         return PreparedConversationTurn(
             historyId = existingResult.id,
             turnId = turnId,
             startedResult = started,
             provider = provider,
             model = model,
-            messages = buildMessages(started, assistantPrompt),
+            messages = messages,
             firstDeltaTimeoutMillis = models.firstDeltaTimeoutMillis,
-            trustAllHttpsCertificates = models.trustAllHttpsCertificates
+            trustAllHttpsCertificates = models.trustAllHttpsCertificates,
+            preparationError = preparationError,
+            tools = tools
         )
     }
 
@@ -112,24 +154,21 @@ internal class ConversationWorkflow(
         turn: PreparedConversationTurn,
         onAnswerDelta: suspend (String) -> Unit
     ): String {
-        val answer = StringBuilder()
-        unifiedClient.streamMessages(
+        turn.preparationError?.let { throw it }
+        return AnswerAgentRuntime(unifiedClient).run(
             provider = turn.provider,
             model = turn.model,
-            messages = turn.messages,
+            assistantPrompt = "",
+            basePrompt = "",
+            imagesBase64 = emptyList(),
             firstDeltaTimeoutMillis = turn.firstDeltaTimeoutMillis,
-            trustAllHttpsCertificates = turn.trustAllHttpsCertificates
-        ).collect { event ->
-            when (event) {
-                is LlmEvent.TextDelta -> {
-                    answer.append(event.text)
-                    onAnswerDelta(event.text)
-                }
-                is LlmEvent.Done -> Unit
-                is LlmEvent.ToolCall -> Unit
-            }
-        }
-        return answer.toString()
+            trustAllHttpsCertificates = turn.trustAllHttpsCertificates,
+            tools = turn.tools,
+            toolContext = ToolContext(workflowId = turn.historyId, nodeId = "conversation"),
+            onAnswerDelta = onAnswerDelta,
+            onToolEvents = {},
+            initialMessages = turn.messages
+        ).answer
     }
 
     private suspend fun buildMessages(
@@ -140,7 +179,8 @@ internal class ConversationWorkflow(
         messages += textMessage(
             role = "system",
             text = assistantPromptWithCopyMarker(assistantPrompt) +
-                "\n\n你正在历史记录页面继续与用户对话。请结合首轮题目、首轮回答和后续消息直接回答。"
+                "\n\n用户在同一段对话中连续截图或追问。请按消息顺序结合原图、补充截图和已有对话回答。" +
+                "最新截图可能补充原题，也可能包含新题；以最新问题为准，不要把不同题目的条件混用。"
         )
         val initialPrompt = when (result.route) {
             ProcessingRoute.OCR_THEN_LLM -> result.extractedText.takeIf(String::isNotBlank)?.let {
@@ -149,17 +189,21 @@ internal class ConversationWorkflow(
             ProcessingRoute.MULTIMODAL_DIRECT -> "请直接基于图片内容完成任务。"
         }
         val images = if (result.route == ProcessingRoute.MULTIMODAL_DIRECT) {
-            result.loadHistoryBitmaps().map { it.toBase64Jpeg() }
+            attachments.encode(result.allScreenshotPaths, result.screenshotBase64).also {
+                require(it.isNotEmpty()) { "找不到本轮对话的原始截图，请点击「新题」后重新截图" }
+            }
         } else {
             emptyList()
         }
         messages += userMessage(initialPrompt, images)
         messages += textMessage(role = "assistant", text = result.initialAssistantContext())
         result.followUpTurns.forEach { followUp ->
-            messages += textMessage(
-                role = "user",
-                text = buildQuotedPrompt(followUp.userText, followUp.quotedFragments)
-            )
+            val text = buildQuotedPrompt(followUp.userText, followUp.quotedFragments) +
+                if (followUp.extractedText.isNotBlank()) "\n\n本轮截图的 OCR 内容：\n${followUp.extractedText}" else ""
+            val turnImages = if (result.route == ProcessingRoute.MULTIMODAL_DIRECT) {
+                attachments.encode(followUp.screenshotPaths)
+            } else emptyList()
+            messages += userMessage(text, turnImages)
             val assistantText = followUp.latestAssistantText()
             if (followUp.completed && assistantText.isNotBlank() && followUp.errorMessage == null) {
                 messages += textMessage(role = "assistant", text = assistantText)

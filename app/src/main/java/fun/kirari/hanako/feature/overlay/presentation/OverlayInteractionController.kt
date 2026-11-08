@@ -26,7 +26,8 @@ internal class OverlayInteractionController(
     private val selectRegion: () -> Unit,
     private val toggleWebSearch: () -> Unit,
     private val exitOverlay: () -> Unit,
-    private val openAnswer: () -> Unit
+    private val openAnswer: () -> Unit,
+    private val newConversation: () -> Unit
 ) {
     private val tag = "HanakoOverlayInteraction"
 
@@ -161,6 +162,7 @@ internal class OverlayInteractionController(
         AppDebugLogStore.i(tag, "handleMenuSelect item=$item")
         when (item) {
             BubbleMenuItem.ShowAnswer -> openAnswer()
+            BubbleMenuItem.NewConversation -> newConversation()
             BubbleMenuItem.SelectRegion -> selectRegion()
             BubbleMenuItem.ToggleSearch -> toggleWebSearch()
             BubbleMenuItem.Exit -> exitOverlay()

@@ -8,7 +8,8 @@ internal fun OverlayUiState.currentAnswerText(): String =
 
 /** An empty running task has only the animated controls, never an empty answer card. */
 internal fun OverlayUiState.hasAnswerBubbleContent(): Boolean =
-    currentAnswerText().isNotBlank() || !error.isNullOrBlank() || result?.followUpTurns?.isNotEmpty() == true
+    if (waitingForScreenshotAnswer) !error.isNullOrBlank()
+    else currentAnswerText().isNotBlank() || !error.isNullOrBlank() || result?.followUpTurns?.isNotEmpty() == true
 
 internal fun OverlayUiState.isSelectingRegion(): Boolean =
     sheetVisible && !settingsMenuVisible && !capturing && sheetMode == OverlaySheetMode.CROP && screenshot != null

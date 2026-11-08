@@ -73,13 +73,13 @@ internal class AnswerAgentNode(
     }
 }
 
-private data class RuntimeAnswerResult(
+internal data class RuntimeAnswerResult(
     val answer: String,
     val searchOutcome: SearchOutcome?,
     val messageTraceSummary: String
 )
 
-private class AnswerAgentRuntime(
+internal class AnswerAgentRuntime(
     private val unifiedClient: UnifiedLLMClient
 ) {
     suspend fun run(
@@ -93,10 +93,15 @@ private class AnswerAgentRuntime(
         tools: List<AgentTool>,
         toolContext: ToolContext,
         onAnswerDelta: suspend (String) -> Unit,
-        onToolEvents: suspend (List<ProcessingEvent>) -> Unit
+        onToolEvents: suspend (List<ProcessingEvent>) -> Unit,
+        initialMessages: List<ChatMessage>? = null
     ): RuntimeAnswerResult {
+        suspend fun collectConversation(context: List<ChatMessage>): String = collectSearchAwareTextStream(
+            provider, model, context, emptyList(), firstDeltaTimeoutMillis,
+            trustAllHttpsCertificates, onAnswerDelta
+        ).text
         if (tools.isEmpty()) {
-            val answer = collectTextStream(
+            val answer = if (initialMessages != null) collectConversation(initialMessages) else collectTextStream(
                 provider = provider,
                 model = model,
                 systemPrompt = assistantPrompt,
@@ -109,11 +114,10 @@ private class AnswerAgentRuntime(
             return RuntimeAnswerResult(answer = answer, searchOutcome = null, messageTraceSummary = "single_pass")
         }
 
-        val messages = mutableListOf<ChatMessage>()
-        if (assistantPrompt.isNotBlank()) {
-            messages += textMessage(role = "system", text = searchEnabledAssistantPrompt(assistantPrompt))
+        val messages = initialMessages?.toMutableList() ?: mutableListOf<ChatMessage>().apply {
+            if (assistantPrompt.isNotBlank()) add(textMessage(role = "system", text = searchEnabledAssistantPrompt(assistantPrompt)))
+            add(userMessage(basePrompt, imagesBase64))
         }
-        messages += userMessage(basePrompt, imagesBase64)
 
         var latestSearchOutcome: SearchOutcome? = null
         repeat(3) { index ->
@@ -136,7 +140,7 @@ private class AnswerAgentRuntime(
                         messageTraceSummary = "tool_loop_${index + 1}_done"
                     )
                 }
-                val fallbackAnswer = collectTextStream(
+                val fallbackAnswer = if (initialMessages != null) collectConversation(messages) else collectTextStream(
                     provider = provider,
                     model = model,
                     systemPrompt = assistantPrompt,
@@ -173,7 +177,7 @@ private class AnswerAgentRuntime(
             messages += toolResultMessage(toolCallId, toolResult.text)
         }
 
-        val fallbackAnswer = collectTextStream(
+        val fallbackAnswer = if (initialMessages != null) collectConversation(messages) else collectTextStream(
             provider = provider,
             model = model,
             systemPrompt = assistantPrompt,
@@ -255,7 +259,7 @@ private class AnswerAgentRuntime(
             provider = provider,
             model = model,
             messages = messages,
-            tools = tools.map { it.definition },
+            tools = tools.takeIf { it.isNotEmpty() }?.map { it.definition },
             firstDeltaTimeoutMillis = firstDeltaTimeoutMillis,
             trustAllHttpsCertificates = trustAllHttpsCertificates
         ).collect { event ->

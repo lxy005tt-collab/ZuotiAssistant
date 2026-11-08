@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
@@ -67,7 +68,7 @@ internal fun ResultOverlaySheet(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-    var streamedAnswer by remember(uiState.result?.id) { mutableStateOf(uiState.working) }
+    var streamedAnswer by remember(uiState.result?.id) { mutableStateOf(uiState.working && !uiState.sendingFollowUp) }
     var bodyHeight by remember { mutableStateOf(0) }
     var actionsHeight by remember { mutableStateOf(0) }
     var composerHeight by remember { mutableStateOf(0) }
@@ -96,7 +97,7 @@ internal fun ResultOverlaySheet(
     val idle = !uiState.working && !uiState.capturing && uiState.result?.id !in uiState.busyHistoryIds
     val actionsVisible = !uiState.working && !uiState.capturing && revealed == answer && revealedReply == followUpAnswer
     SideEffect {
-        if (uiState.working) streamedAnswer = true
+        if (uiState.working && !uiState.sendingFollowUp) streamedAnswer = true
         if (uiState.sendingFollowUp) streamedReply = true
         if (bodyHeight > 0) {
             onContentHeightChanged(bodyHeight + (if (actionsVisible) actionsHeight else 0) + (if (showComposer) composerHeight else 0))
@@ -109,10 +110,13 @@ internal fun ResultOverlaySheet(
             keyboard?.show()
         }
     }
-    LaunchedEffect(uiState.result?.followUpTurns?.size, uiState.sendingFollowUp) {
-        if (uiState.sendingFollowUp) {
+    val followingReply = uiState.sendingFollowUp || revealedReply != followUpAnswer
+    LaunchedEffect(lastFollowUp?.id, followingReply) {
+        if (followingReply) {
             withFrameNanos { }
-            scrollState.animateScrollTo(scrollState.maxValue)
+            snapshotFlow { scrollState.maxValue }.collect { bottom ->
+                if (!scrollState.isScrollInProgress) scrollState.scrollTo(bottom)
+            }
         }
     }
 
@@ -126,7 +130,8 @@ internal fun ResultOverlaySheet(
                 if (answer.isNotBlank()) MarkdownLatexText(revealed, Modifier.fillMaxWidth())
                 uiState.result?.followUpTurns?.forEach { turn ->
                     key(turn.id) {
-                        Text("追问：${turn.userText}", style = MaterialTheme.typography.bodySmall,
+                        Text(if (turn.screenshotPaths.isNotEmpty()) "截图 · ${turn.screenshotPaths.size} 张" else "追问：${turn.userText}",
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f))
                         val text = turn.pendingAssistantText.ifBlank { turn.currentAssistantText() }
                         val reply = if (turn.id == lastFollowUp?.id) revealedReply else text
@@ -189,7 +194,7 @@ internal fun ResultOverlaySheet(
                         showComposer = false
                         focusManager.clearFocus()
                         keyboard?.hide()
-                        if (lastFollowUp != null) onRetryFollowUp() else onRegenerate()
+                        if (lastFollowUp != null && !uiState.retryCapturePending) onRetryFollowUp() else onRegenerate()
                     },
                     enabled = idle,
                     modifier = Modifier.width(48.dp).height(32.dp)
@@ -201,7 +206,8 @@ internal fun ResultOverlaySheet(
                         showComposer = !showComposer
                         if (!showComposer) { focusManager.clearFocus(); keyboard?.hide() }
                     },
-                    enabled = idle && uiState.result != null && uiState.result.automationAction == null,
+                    enabled = idle && !uiState.retryCapturePending && uiState.screenshotRetry == null &&
+                        uiState.result != null && uiState.result.automationAction == null,
                     modifier = Modifier.width(48.dp).height(32.dp)
                 ) {
                     Icon(painterResource(R.drawable.ic_bubble_answer),

@@ -29,6 +29,7 @@ data class BubbleMenuEntry(
 object BubbleMenuRegistry {
     val entries: List<BubbleMenuEntry> = listOf(
         BubbleMenuEntry(item = BubbleMenuItem.ShowAnswer, label = "答案", iconRes = R.drawable.ic_bubble_answer),
+        BubbleMenuEntry(item = BubbleMenuItem.NewConversation, label = "新题", iconRes = R.drawable.ic_bubble_new_conversation),
         BubbleMenuEntry(
             item = BubbleMenuItem.SelectRegion,
             label = "区域",

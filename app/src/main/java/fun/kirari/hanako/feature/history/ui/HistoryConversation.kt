@@ -172,6 +172,10 @@ private fun UserMessageBubble(turn: FollowUpTurn, onQuoteClick: (QuotedFragment)
                         Text(quote.anchor.previewLabel, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                     }
                 }
+                if (turn.screenshotPaths.isNotEmpty()) {
+                    Text("截图 · ${turn.screenshotPaths.size} 张", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
                 Text(text = turn.userText, color = MaterialTheme.colorScheme.onPrimaryContainer)
             }
         }

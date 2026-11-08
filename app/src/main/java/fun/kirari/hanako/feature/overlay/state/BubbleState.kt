@@ -60,6 +60,8 @@ sealed class BubbleState {
  */
 sealed class BubbleMenuItem {
     data object ShowAnswer : BubbleMenuItem()
+    /** 开始新的上下文，已有对话保留在历史记录 */
+    data object NewConversation : BubbleMenuItem()
     /** 选择截图区域并解题 */
     data object SelectRegion : BubbleMenuItem()
     /** 联网搜索开关 */

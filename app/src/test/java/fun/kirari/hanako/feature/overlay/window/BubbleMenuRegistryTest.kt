@@ -16,6 +16,7 @@ class BubbleMenuRegistryTest {
         assertEquals(
             listOf(
                 BubbleMenuItem.ShowAnswer,
+                BubbleMenuItem.NewConversation,
                 BubbleMenuItem.SelectRegion,
                 BubbleMenuItem.ToggleSearch,
                 BubbleMenuItem.Exit

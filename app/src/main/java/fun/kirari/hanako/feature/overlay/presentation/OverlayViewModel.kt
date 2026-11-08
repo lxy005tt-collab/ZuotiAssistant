@@ -34,7 +34,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.map
 import `fun`.kirari.hanako.core.model.loadHistoryBitmaps
+import `fun`.kirari.hanako.core.model.saveToHistoryFile
 import `fun`.kirari.hanako.feature.overlay.state.SheetAnimationDurationMs
+import `fun`.kirari.hanako.feature.overlay.state.ScreenshotRetry
 
 internal class OverlayViewModel(
     private val appContext: Context,
@@ -68,7 +70,15 @@ internal class OverlayViewModel(
         scope = viewModelScope,
         uiState = _uiState,
         solveOperations = solveOperations,
-        bubbleStateMachine = bubbleStateMachine
+        bubbleStateMachine = bubbleStateMachine,
+        saveScreenshots = { historyId, bitmaps ->
+            withContext(Dispatchers.IO) {
+                val turnId = java.util.UUID.randomUUID().toString()
+                bitmaps.mapIndexed { index, bitmap ->
+                    bitmap.saveToHistoryFile(appContext, "${historyId}_${turnId}_$index")
+                }
+            }
+        }
     )
     private val settingsController = OverlaySettingsController(
         scope = viewModelScope,
@@ -96,7 +106,8 @@ internal class OverlayViewModel(
             ScreenCaptureManager.stop(appContext, _uiState.value.settings.screenCaptureMethod)
             appContext.stopService(Intent(appContext, OverlayService::class.java))
         },
-        openAnswer = ::showCurrentAnswer
+        openAnswer = ::showCurrentAnswer,
+        newConversation = ::startNewConversation
     )
 
     init {
@@ -167,12 +178,18 @@ internal class OverlayViewModel(
         }
     }
 
+    fun startNewConversation() {
+        if (_uiState.value.working || _uiState.value.capturing) return
+        answerController.startNewConversation()
+        android.widget.Toast.makeText(appContext, "已开始新对话，下次截图不会带上前文", android.widget.Toast.LENGTH_SHORT).show()
+    }
+
     fun captureAndSolveFullScreen(keepOverlayVisible: Boolean = false) {
         if (_uiState.value.working || _uiState.value.capturing) return
         _uiState.update {
             it.copy(capturing = true, settingsMenuVisible = false, sheetVisible = keepOverlayVisible,
-                sheetMode = OverlaySheetMode.RESULT, result = null, screenshot = null, selectedBitmap = null,
-                liveAnswerText = "", liveOcrText = "", followUpDraft = "", sendingFollowUp = false,
+                sheetMode = OverlaySheetMode.RESULT, screenshot = null,
+                followUpDraft = "", sendingFollowUp = false, waitingForScreenshotAnswer = true, screenshotRetry = null,
                 error = null, launchMode = CaptureLaunchMode.NORMAL, autoRunState = AutoRunState.IDLE)
         }
         AppDebugLogStore.i(tag, "capture full screen method=${_uiState.value.settings.screenCaptureMethod} visibleOverlay=$keepOverlayVisible")
@@ -185,11 +202,12 @@ internal class OverlayViewModel(
                 _uiState.update { it.copy(capturing = false, screenshot = bitmap) }
                 answerController.process(bitmap)
             } catch (error: CancellationException) {
-                _uiState.update { it.copy(capturing = false) }
+                _uiState.update { it.copy(capturing = false, waitingForScreenshotAnswer = false) }
                 throw error
             } catch (error: Exception) {
-                _uiState.update { it.copy(capturing = false, result = null, selectedBitmap = null,
-                    liveAnswerText = "", liveOcrText = "", error = error.message ?: "截屏失败，请检查截屏授权",
+                _uiState.update { it.copy(capturing = false, waitingForScreenshotAnswer = false,
+                    screenshotRetry = ScreenshotRetry.FULL_SCREEN,
+                    error = error.message ?: "截屏失败，请检查截屏授权",
                     sheetVisible = true, sheetMode = OverlaySheetMode.RESULT) }
             }
         }
@@ -199,7 +217,7 @@ internal class OverlayViewModel(
         if (_uiState.value.working || _uiState.value.capturing) return
         _uiState.update {
             it.copy(sheetVisible = false, settingsMenuVisible = false, capturing = true,
-                error = null, launchMode = CaptureLaunchMode.NORMAL, autoRunState = AutoRunState.IDLE)
+                error = null, screenshotRetry = null, launchMode = CaptureLaunchMode.NORMAL, autoRunState = AutoRunState.IDLE)
         }
         viewModelScope.launch {
             try {
@@ -248,7 +266,7 @@ internal class OverlayViewModel(
         AppDebugLogStore.e(tag, "region selection failed", error)
         _uiState.update {
             it.copy(error = error.message ?: "无法打开区域截图，请检查截图授权", capturing = false,
-                screenshot = null, selectedBitmap = null, result = null, liveAnswerText = "", liveOcrText = "",
+                screenshot = null, waitingForScreenshotAnswer = false, screenshotRetry = ScreenshotRetry.REGION,
                 sheetVisible = true, settingsMenuVisible = false, sheetMode = OverlaySheetMode.RESULT)
         }
     }
@@ -268,10 +286,20 @@ internal class OverlayViewModel(
     fun regenerateCurrentResult() {
         val state = _uiState.value
         if (state.working || state.capturing || state.result?.id in state.busyHistoryIds) return
+        state.screenshotRetry?.let { retry ->
+            if (retry == ScreenshotRetry.FULL_SCREEN) captureAndSolveFullScreen() else captureNewQuestion()
+            return
+        }
+        if (state.retryCapturePending) {
+            answerController.retryCapture()
+            return
+        }
         val result = state.result
         if (result == null) {
             state.selectedBitmap?.let(answerController::process) ?: captureAndSolveFullScreen()
-        } else if (result.followUpTurns.isNotEmpty() || result.automationAction != null) {
+        } else if (result.followUpTurns.isNotEmpty()) {
+            answerController.sendFollowUp(retry = true)
+        } else if (result.automationAction != null) {
             // Retrying an old conversation must not silently erase its follow-ups.
             val bitmaps = result.loadHistoryBitmaps()
             if (bitmaps.isEmpty()) {
@@ -290,7 +318,7 @@ internal class OverlayViewModel(
 
     fun sendFollowUp() = answerController.sendFollowUp()
 
-    fun retryFollowUp() = answerController.sendFollowUp(retry = true)
+    fun retryFollowUp() = regenerateCurrentResult()
 
     fun cancelAnswer() = answerController.cancel()
 

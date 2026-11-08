@@ -133,7 +133,7 @@ internal fun OverlayPanel(
                         if (uiState.working) {
                             TextButton(onClick = viewModel::cancelAnswer) { Text("停止生成") }
                         } else {
-                            TextButton(onClick = viewModel::captureAndSolveFullScreen, enabled = !uiState.capturing) { Text("新题") }
+                            TextButton(onClick = viewModel::startNewConversation, enabled = !uiState.capturing) { Text("新题") }
                         }
                         TextButton(onClick = viewModel::openHistory, enabled = !uiState.working && !uiState.capturing) {
                             Text("历史")

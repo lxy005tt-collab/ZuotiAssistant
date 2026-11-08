@@ -95,9 +95,9 @@ fun HistoryDetailScreen(
     val answerVersions = remember(result.id, result.answerVersions, result.answer) {
         result.displayedAnswerVersions()
     }
-    val screenshots = remember(result.allScreenshotPaths, result.screenshotBase64) {
-        result.allScreenshotPaths.mapNotNull { it.loadHistoryBitmap() }.toMutableList().apply {
-            if (isEmpty()) result.screenshotBase64?.decodeHistoryBitmap()?.let(::add)
+    val screenshots = remember(result.conversationScreenshotPaths, result.screenshotBase64) {
+        result.conversationScreenshotPaths.mapNotNull { it.loadHistoryBitmap() }.toMutableList().apply {
+            if (result.allScreenshotPaths.isEmpty()) result.screenshotBase64?.decodeHistoryBitmap()?.let { add(0, it) }
         }
     }
     val listState = rememberLazyListState()
