@@ -7,6 +7,39 @@ import org.junit.Test
 
 class RichTextLatexTest {
     @Test
+    fun mathInsideCodeStaysLiteral_afterEarlierReplacementsMoveOffsets() {
+        val source = "\\(x\\) before `\\[literal\\]`\n```kotlin\n$$\nkeep me\n$$\n```\n\\[y\\] after"
+        val normalized = preprocessMarkdown(source).first
+        assertEquals(true, normalized.contains("`\\[literal\\]`"))
+        val blocks = splitDisplayMathBlocks(normalized)
+        assertEquals(1, blocks.count { it is MarkdownRenderBlock.DisplayMath })
+        assertEquals(true, blocks.filterIsInstance<MarkdownRenderBlock.Markdown>().joinToString { it.content }.contains("keep me"))
+    }
+
+    @Test
+    fun inlineDoubleDollar_preservesBothSurroundingTexts_andUnfinishedSuffix() {
+        val blocks = splitDisplayMathBlocks("before \$\$x^2\$\$ after \$\$unfinished")
+        assertEquals("before ", (blocks[0] as MarkdownRenderBlock.Markdown).content)
+        assertEquals("\$\$x^2\$\$", (blocks[1] as MarkdownRenderBlock.DisplayMath).latex)
+        assertEquals(" after \$\$unfinished", (blocks[2] as MarkdownRenderBlock.Markdown).content)
+    }
+
+    @Test
+    fun mathFencesAndBareAlignedEnvironments_becomeDisplayMath() {
+        val source = "```latex\n\\ce{2H2 + O2 -> 2H2O}\n```\n\\begin{align}x&=1\\\\y&=2\\end{align}"
+        val blocks = splitDisplayMathBlocks(preprocessMarkdown(source).first)
+        assertEquals(2, blocks.count { it is MarkdownRenderBlock.DisplayMath })
+    }
+
+    @Test
+    fun nestedOrLongFormulas_haveExplicitRendererLimits() {
+        assertEquals(true, requiresExtendedLatex("\\ce{H2O}"))
+        assertEquals(true, requiresExtendedLatex("x+".repeat(300) + "1"))
+        assertEquals(true, latexNestingWithinLimit("\\frac{1}{2}"))
+        assertEquals(false, latexNestingWithinLimit("{".repeat(81) + "x" + "}".repeat(81)))
+    }
+
+    @Test
     fun processLatex_stripsInlineMathDelimiters() {
         assertEquals(
             """a + b""",

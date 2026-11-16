@@ -1,6 +1,8 @@
 package `fun`.kirari.llm.core
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.serialization.json.Json
 
 class LlmClient(
@@ -22,6 +24,8 @@ class LlmClient(
             ProviderKind.ANTHROPIC -> AnthropicAdapter(sseClient, json, logger)
             ProviderKind.GOOGLE -> GoogleAdapter(sseClient, json, logger)
         }
-        return adapter.stream(request)
+        // Payload construction/JSON encoding grows with every screenshot in a session.
+        // Keep it off the UI collector while preserving the collector's own context.
+        return adapter.stream(request).flowOn(Dispatchers.Default)
     }
 }

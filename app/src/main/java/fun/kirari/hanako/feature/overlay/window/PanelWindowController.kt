@@ -43,6 +43,8 @@ internal class PanelWindowController(
     private var keyboardBottom = 0
     private var contentHeight = 0
     private var contentKey: String? = null
+    private var layoutKey: List<Any?>? = null
+    private val repositionAfterMeasure = Runnable { reposition() }
 
     fun showOrUpdate(mode: OverlaySheetMode) {
         this.mode = mode
@@ -53,11 +55,17 @@ internal class PanelWindowController(
             contentHeight = 0
             if (state.settingsMenuVisible) hideKeyboard()
         }
+        val reopening = closing
         if (closing) {
             closing = false
         }
         if (panelView == null) panelView = createPanelRoot()
-        reposition()
+        val nextLayoutKey = listOf(mode, state.settingsMenuVisible, state.result?.id,
+            state.hasAnswerBubbleContent(), state.composerVisible, state.cardExpanded, state.settings.floatingWindow.sizeScale)
+        if (reopening || nextLayoutKey != layoutKey) {
+            layoutKey = nextLayoutKey
+            reposition()
+        }
     }
 
     fun reposition() {
@@ -84,7 +92,7 @@ internal class PanelWindowController(
         val safeArea = CardBounds(left, top, right.coerceAtLeast(left + 1), bottom.coerceAtLeast(top + 1))
         val state = viewModel.uiState.value
         val compact = mode == OverlaySheetMode.RESULT || state.settingsMenuVisible
-        val showBody = mode != OverlaySheetMode.RESULT || state.settingsMenuVisible || state.hasAnswerBubbleContent()
+        val showBody = mode != OverlaySheetMode.RESULT || state.settingsMenuVisible || state.hasAnswerBubbleContent() || state.composerVisible
         val expanded = !compact && state.cardExpanded
         val desiredHeight = when {
             state.settingsMenuVisible -> contentHeight.takeIf { it > 0 } ?: cardDp(80)
@@ -124,17 +132,22 @@ internal class PanelWindowController(
     }
 
     private fun clearPanelState() {
+        panelView?.removeCallbacks(repositionAfterMeasure)
         panelView = null
         closing = false
         keyboardBottom = 0
         contentHeight = 0
         contentKey = null
+        layoutKey = null
     }
 
     private fun updateContentHeight(height: Int) {
         if (height <= 0 || contentHeight == height) return
         contentHeight = height
-        panelView?.post { reposition() }
+        panelView?.apply {
+            removeCallbacks(repositionAfterMeasure)
+            postOnAnimation(repositionAfterMeasure)
+        }
     }
 
     private fun createPanelRoot(): FrameLayout = object : FrameLayout(context) {
@@ -164,7 +177,7 @@ internal class PanelWindowController(
         }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
             val ime = if (insets.isVisible(WindowInsetsCompat.Type.ime())) {
-                maxOf(keyboardBottom, insets.getInsets(WindowInsetsCompat.Type.ime()).bottom)
+                insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
             } else 0
             if (keyboardBottom != ime) { keyboardBottom = ime; view.post { reposition() } }
             insets

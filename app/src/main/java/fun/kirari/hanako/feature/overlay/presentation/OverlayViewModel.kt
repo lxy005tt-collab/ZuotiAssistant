@@ -168,13 +168,13 @@ internal class OverlayViewModel(
     }
 
     fun toggleFloatingSettings() {
-        _uiState.update { it.copy(settingsMenuVisible = !it.settingsMenuVisible, sheetVisible = !it.settingsMenuVisible) }
+        _uiState.update { it.copy(settingsMenuVisible = !it.settingsMenuVisible, sheetVisible = !it.settingsMenuVisible, composerVisible = false) }
     }
 
     fun showCurrentAnswer() {
         _uiState.update {
             it.copy(sheetVisible = true, settingsMenuVisible = false,
-                sheetMode = OverlaySheetMode.RESULT)
+                sheetMode = OverlaySheetMode.RESULT, composerVisible = true)
         }
     }
 
@@ -189,7 +189,7 @@ internal class OverlayViewModel(
         _uiState.update {
             it.copy(capturing = true, settingsMenuVisible = false, sheetVisible = keepOverlayVisible,
                 sheetMode = OverlaySheetMode.RESULT, screenshot = null,
-                followUpDraft = "", sendingFollowUp = false, waitingForScreenshotAnswer = true, screenshotRetry = null,
+                followUpDraft = "", composerVisible = false, sendingFollowUp = false, waitingForScreenshotAnswer = true, screenshotRetry = null,
                 error = null, launchMode = CaptureLaunchMode.NORMAL, autoRunState = AutoRunState.IDLE)
         }
         AppDebugLogStore.i(tag, "capture full screen method=${_uiState.value.settings.screenCaptureMethod} visibleOverlay=$keepOverlayVisible")
@@ -216,7 +216,7 @@ internal class OverlayViewModel(
     fun captureNewQuestion() {
         if (_uiState.value.working || _uiState.value.capturing) return
         _uiState.update {
-            it.copy(sheetVisible = false, settingsMenuVisible = false, capturing = true,
+            it.copy(sheetVisible = false, settingsMenuVisible = false, capturing = true, composerVisible = false,
                 error = null, screenshotRetry = null, launchMode = CaptureLaunchMode.NORMAL, autoRunState = AutoRunState.IDLE)
         }
         viewModelScope.launch {
@@ -316,6 +316,10 @@ internal class OverlayViewModel(
         _uiState.update { it.copy(followUpDraft = text) }
     }
 
+    fun setComposerVisible(visible: Boolean) {
+        _uiState.update { it.copy(composerVisible = visible) }
+    }
+
     fun sendFollowUp() = answerController.sendFollowUp()
 
     fun retryFollowUp() = regenerateCurrentResult()
@@ -352,7 +356,7 @@ internal class OverlayViewModel(
     }
 
     fun closeSheet() {
-        _uiState.update { it.copy(sheetVisible = false, settingsMenuVisible = false) }
+        _uiState.update { it.copy(sheetVisible = false, settingsMenuVisible = false, composerVisible = false) }
     }
 
     fun consumeAutoCompletedState() {

@@ -1,5 +1,7 @@
 package `fun`.kirari.hanako.feature.overlay.window
 
+internal const val WINDOW_TRANSITION_MS = 260L
+
 /** Grow to the right of the controls; shift left only when the screen edge requires it. */
 internal fun placeUnifiedWindow(
     safeArea: CardBounds,

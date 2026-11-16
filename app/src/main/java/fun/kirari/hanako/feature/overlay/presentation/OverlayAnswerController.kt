@@ -125,7 +125,7 @@ internal class OverlayAnswerController(
         pendingScreenshotPaths = emptyList()
         uiState.update {
             it.copy(result = null, screenshot = null, selectedBitmap = null,
-                liveAnswerText = "", liveOcrText = "", followUpDraft = "", error = null,
+                liveAnswerText = "", liveOcrText = "", followUpDraft = "", composerVisible = false, error = null,
                 retryCapturePending = false, waitingForScreenshotAnswer = false, screenshotRetry = null,
                 sendingFollowUp = false, sheetVisible = false, settingsMenuVisible = false,
                 sheetMode = OverlaySheetMode.RESULT, cardExpanded = false)

@@ -37,6 +37,7 @@ internal data class OverlayUiState(
     val screenshotRetry: ScreenshotRetry? = null,
     val waitingForScreenshotAnswer: Boolean = false,
     val followUpDraft: String = "",
+    val composerVisible: Boolean = false,
     val capturing: Boolean = false,
     val settingsMenuVisible: Boolean = false,
     val history: List<ProcessingResult> = emptyList(),

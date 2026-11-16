@@ -5,12 +5,10 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PathMeasure
 import android.graphics.RectF
-import android.graphics.Shader
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.view.Gravity
@@ -49,7 +47,7 @@ internal class DualBubbleView(
     private val scanCorners = Path()
     private val leftCircle = RectF()
     private val rightCircle = RectF()
-    private var captureGradient: LinearGradient? = null
+    private val captureFill = Color.rgb(23, 23, 23)
     private val measure = PathMeasure()
     private val tip = FloatArray(2)
     private val bodyColor = ContextCompat.getColor(context, R.color.overlay_glass_fill)
@@ -66,6 +64,7 @@ internal class DualBubbleView(
     private var settingsAngle = 0f
     private var settingsOpen = false
     private var settingsAnimator: ValueAnimator? = null
+    private var orbitPlayTime = 0L
     // Visibility callbacks may run from the View constructor before field initialization.
     private val orbitAnimator: ValueAnimator? = ValueAnimator.ofFloat(0f, 1f).apply {
         duration = 1400L
@@ -158,10 +157,6 @@ internal class DualBubbleView(
         measure.setPath(outline, true)
         val cx = right.centerX()
         val cy = right.centerY()
-        captureGradient = LinearGradient(
-            right.left, right.top, right.right, right.bottom,
-            Color.rgb(23, 23, 23), Color.rgb(23, 23, 23), Shader.TileMode.CLAMP
-        )
         val radius = 10f * density
         val arm = 4.5f * density
         scanCorners.apply {
@@ -197,7 +192,7 @@ internal class DualBubbleView(
         captureTarget.isEnabled = !busy
         if (processing != busy) {
             processing = busy
-            if (busy && isAttachedToWindow && visibility == VISIBLE) orbitAnimator?.start() else orbitAnimator?.cancel()
+            updateOrbitPlayback()
             invalidate()
         }
         if (settingsOpen != menuOpen) {
@@ -258,7 +253,7 @@ internal class DualBubbleView(
         val cy = leftCircle.centerY()
         val leftCx = leftCircle.centerX()
         canvas.drawCircle(leftCx, cy, buttonRadius, paint)
-        paint.shader = captureGradient
+        paint.color = captureFill
         canvas.drawCircle(rightCircle.centerX(), rightCircle.centerY(), buttonRadius, paint)
         paint.shader = null
 
@@ -326,13 +321,25 @@ internal class DualBubbleView(
 
     override fun onVisibilityChanged(changedView: View, visibility: Int) {
         super.onVisibilityChanged(changedView, visibility)
-        if (visibility == VISIBLE && processing && isAttachedToWindow) orbitAnimator?.start()
-        else orbitAnimator?.cancel()
+        updateOrbitPlayback()
+    }
+
+    private fun updateOrbitPlayback() {
+        val animator = orbitAnimator ?: return
+        if (processing && isAttachedToWindow && isShown) {
+            if (!animator.isStarted) {
+                animator.start()
+                animator.currentPlayTime = orbitPlayTime
+            }
+        } else if (animator.isStarted) {
+            orbitPlayTime = animator.currentPlayTime % animator.duration
+            animator.cancel()
+        }
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        if (processing && visibility == VISIBLE) orbitAnimator?.start()
+        updateOrbitPlayback()
     }
 
     override fun onDetachedFromWindow() {

@@ -74,16 +74,16 @@ fun MarkdownLatexText(
     extractCopyMarkers: Boolean = true,
     displayMathFillMaxWidth: Boolean = true
 ) {
-    val parsed = remember(content, extractCopyMarkers) { parseMarkdown(content, extractCopyMarkers) }
-    val copyMarkerMap = remember(parsed.copyMarkers) {
-        parsed.copyMarkers.associateBy { it.placeholder }
+    val parsed = remember(content, extractCopyMarkers) { preprocessMarkdown(content, extractCopyMarkers) }
+    val copyMarkerMap = remember(parsed.second) {
+        parsed.second.associateBy { it.placeholder }
     }
-    val copyBlocks = remember(parsed.preprocessed, parsed.copyMarkers) {
-        splitCopyMarkerBlocks(parsed.preprocessed, parsed.copyMarkers)
+    val copyBlocks = remember(parsed.first, parsed.second) {
+        splitCopyMarkerBlocks(parsed.first, parsed.second)
     }
 
     ProvideTextStyle(style) {
-        if (extractCopyMarkers && parsed.copyMarkers.isNotEmpty()) {
+        if (extractCopyMarkers && parsed.second.isNotEmpty()) {
             Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 copyBlocks.fastForEach { block ->
                     when (block) {
@@ -100,7 +100,7 @@ fun MarkdownLatexText(
             }
         } else {
             Column(modifier = modifier) {
-                splitDisplayMathBlocks(parsed.preprocessed).fastForEach { block ->
+                remember(parsed.first) { splitDisplayMathBlocks(parsed.first) }.fastForEach { block ->
                     when (block) {
                         is MarkdownRenderBlock.DisplayMath -> LatexBlock(
                             latex = block.latex,
@@ -597,6 +597,21 @@ private fun Paragraph(
     val colorScheme = MaterialTheme.colorScheme
     val density = LocalDensity.current
     val textStyle = androidx.compose.material3.LocalTextStyle.current
+    val context = LocalContext.current
+    val formulaStates = remember(node, content, textStyle, density, colorScheme) {
+        buildMap {
+            fun collectMath(part: ASTNode) {
+                if (part.type == GFMElementTypes.INLINE_MATH) {
+                    val formula = part.getText(content)
+                    val pixels = density.formulaPixels(textStyle.fontSize)
+                    val color = textStyle.color.takeIf { it != androidx.compose.ui.graphics.Color.Unspecified } ?: colorScheme.onSurface
+                    put(formula, FormulaRenderer.state(context, formula, pixels, color.toArgb()))
+                } else part.children.forEach(::collectMath)
+            }
+            collectMath(node)
+        }
+    }
+    val renderedMath = formulaStates.mapValues { it.value.value }
     val inlineContents = remember(node) {
         mutableMapOf<String, InlineTextContent>()
     }
@@ -604,7 +619,8 @@ private fun Paragraph(
         node.findChildRecursive(GFMElementTypes.INLINE_MATH) != null
     }
 
-    val annotated = remember(content, node, trim) {
+    val annotated = remember(content, node, trim, textStyle, density, colorScheme, renderedMath) {
+        inlineContents.clear()
         buildAnnotatedString {
             node.children.fastForEach { child ->
                 appendMarkdownNodeContent(
@@ -615,7 +631,8 @@ private fun Paragraph(
                     copyMarkerMap = copyMarkerMap,
                     colorScheme = colorScheme,
                     density = density,
-                    style = textStyle
+                    style = textStyle,
+                    renderedMath = renderedMath
                 )
             }
         }
@@ -653,7 +670,8 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
     copyMarkerMap: Map<String, CopyMarkerToken>,
     colorScheme: androidx.compose.material3.ColorScheme,
     density: Density,
-    style: TextStyle
+    style: TextStyle,
+    renderedMath: Map<String, FormulaRender>
 ) {
     when {
         node.type == GFMTokenTypes.GFM_AUTOLINK -> {
@@ -690,7 +708,8 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                         copyMarkerMap = copyMarkerMap,
                         colorScheme = colorScheme,
                         density = density,
-                        style = style
+                        style = style,
+                        renderedMath = renderedMath
                     )
                 }
             }
@@ -707,7 +726,8 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                         copyMarkerMap = copyMarkerMap,
                         colorScheme = colorScheme,
                         density = density,
-                        style = style
+                        style = style,
+                        renderedMath = renderedMath
                     )
                 }
             }
@@ -724,7 +744,8 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                         copyMarkerMap = copyMarkerMap,
                         colorScheme = colorScheme,
                         density = density,
-                        style = style
+                        style = style,
+                        renderedMath = renderedMath
                     )
                 }
             }
@@ -789,7 +810,7 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
             val key = formula
             val placeholder = runCatching {
                 with(density) {
-                    assumeLatexSize(formula, style.fontSize.toPx()).let { rect ->
+                    assumeLatexSize(renderedMath[formula] ?: FormulaRender(), density.formulaPixels(style.fontSize)).let { rect ->
                         if (rect.width() <= 0 || rect.height() <= 0) {
                             null
                         } else {
@@ -834,7 +855,8 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                 copyMarkerMap = copyMarkerMap,
                 colorScheme = colorScheme,
                 density = density,
-                style = style
+                style = style,
+                renderedMath = renderedMath
             )
         }
     }

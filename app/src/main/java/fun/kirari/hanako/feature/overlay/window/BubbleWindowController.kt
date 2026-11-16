@@ -197,7 +197,7 @@ internal class BubbleWindowController(
         val target = placeUnifiedWindow(screenArea(), anchor, header.desiredWidth, header.desiredHeight)
         // Translation and clipping share one timeline. The Compose body retains its size,
         // and WindowManager is updated only at the beginning and end of the entire motion.
-        animateBounds(target, expandedAtEnd = false, durationMs = 260L) {
+        animateBounds(target, expandedAtEnd = false, durationMs = WINDOW_TRANSITION_MS) {
             finishHidingPanel(target)
             onHidden()
         }
@@ -280,6 +280,10 @@ internal class BubbleWindowController(
         val width = if (expanded) panelWidth else header.desiredWidth
         val height = header.desiredHeight + if (expanded && panelBodyVisible) panelHeight + cardDp(8) else 0
         val target = placeUnifiedWindow(area, anchor, width, height)
+        // Once an edge pushes the controls inward, that is their new anchor. Reusing
+        // the old bottom/right coordinate makes a shorter card jump back out again.
+        anchorX = target.left
+        anchorY = target.top
         // Keep the child at its final size while the parent reveals it. This avoids text reflow
         // and prevents the appearing action row from squeezing the answer during growth.
         panel?.let { body ->
@@ -297,7 +301,7 @@ internal class BubbleWindowController(
         cancelBoundsAnimation()
         if (animate && expanded && host.visibility == View.VISIBLE && visualBounds != null && visualBounds != target) {
             animateBounds(target, expandedAtEnd = true,
-                durationMs = if (visualBounds?.width != target.width || expansionFraction < 1f) 280L else 150L)
+                durationMs = WINDOW_TRANSITION_MS)
         } else {
             panel?.alpha = 1f
             updateExpansion(if (expanded && panelBodyVisible) 1f else 0f)
@@ -326,15 +330,14 @@ internal class BubbleWindowController(
             interpolator = PathInterpolator(0.22f, 0f, 0.18f, 1f)
             addUpdateListener {
                 val progress = it.animatedValue as Float
-                val horizontal = if (revealing) (progress / .8f).coerceIn(0f, 1f) else progress
-                val vertical = if (revealing) ((progress - .08f) / .92f).coerceIn(0f, 1f) else progress
-                updateExpansion(startExpansion + (endExpansion - startExpansion) * horizontal)
+                // Opening and closing use exactly the same geometry timeline.
+                updateExpansion(startExpansion + (endExpansion - startExpansion) * progress)
                 panel?.alpha = when {
-                    !expandedAtEnd -> startBodyAlpha * (1f - progress / .55f).coerceIn(0f, 1f)
-                    revealing -> startBodyAlpha + (1f - startBodyAlpha) * ((progress - .18f) / .72f).coerceIn(0f, 1f)
+                    !expandedAtEnd -> startBodyAlpha * (1f - progress)
+                    revealing -> startBodyAlpha + (1f - startBodyAlpha) * progress
                     else -> 1f
                 }
-                renderBounds(interpolateWindowBounds(from, target, horizontal, vertical))
+                renderBounds(interpolateWindowBounds(from, target, progress))
             }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
@@ -395,6 +398,8 @@ internal class BubbleWindowController(
     }
 
     private fun settleBounds(bounds: CardBounds, forceWindowUpdate: Boolean = false) {
+        anchorX = bounds.left
+        anchorY = bounds.top
         updateWindowBounds(bounds, forceWindowUpdate)
         sizeContent(bounds.width, bounds.height)
         renderBounds(bounds)

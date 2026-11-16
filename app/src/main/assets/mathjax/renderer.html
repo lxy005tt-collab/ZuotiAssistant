@@ -1,0 +1,50 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'">
+<script>
+window.MathJax = {
+  startup: {typeset: false},
+  options: {enableMenu: false},
+  tex: {
+    packages: ['base', 'ams', 'newcommand', 'configmacros', 'boldsymbol', 'braket',
+      'cancel', 'cases', 'centernot', 'color', 'extpfeil', 'mathtools', 'mhchem',
+      'physics', 'unicode', 'verb', 'amscd', 'bbox', 'bussproofs', 'colortbl',
+      'empheq', 'enclose', 'gensymb', 'textcomp', 'textmacros', 'upgreek'],
+    maxBuffer: 16384,
+    maxMacros: 1000,
+    tags: 'none'
+  },
+  svg: {fontCache: 'none'}
+};
+</script>
+<script src="tex-svg-full.js"></script>
+<script>
+function renderFormula(source, fontSize, color, display) {
+  try {
+    // Use an independent TeX parser for each formula: user macros and equation
+    // labels must not leak into another answer or another conversation.
+    source = source.replace(/\\require\{([^}]+)\}/g, (command, name) =>
+      MathJax.config.tex.packages.includes(name) ? '' : command);
+    const input = new MathJax._.input.tex_ts.TeX(MathJax.config.tex);
+    const document = MathJax._.mathjax.mathjax.document('', {
+      InputJax: input, OutputJax: MathJax.startup.output
+    });
+    const containerWidth = Math.max(320, fontSize * 20);
+    const result = document.convert(source, {display: display, em: fontSize, ex: fontSize * 0.442, containerWidth});
+    if (result.querySelector('[data-mml-node="merror"]')) throw Error('Unsupported or incomplete formula');
+    const svg = result.querySelector('svg');
+    const viewBox = svg.getAttribute('viewBox');
+    const box = viewBox ? viewBox.trim().split(/\s+/).map(Number) : null;
+    // Numbered equations use a full-width SVG viewport instead of a viewBox.
+    const width = box ? Math.max(1, Math.ceil(box[2] * fontSize / 1000)) : containerWidth;
+    const height = Math.max(1, Math.ceil(box ? box[3] * fontSize / 1000 : parseFloat(svg.getAttribute('height')) * fontSize * 0.442));
+    if (!Number.isFinite(width + height) || width > 16000 || height > 16000) throw Error('Formula too large');
+    svg.setAttribute('width', width);
+    svg.setAttribute('height', height);
+    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    return JSON.stringify({width, height, svg: svg.outerHTML.replace(/currentColor/g, color)});
+  } catch (error) {
+    return JSON.stringify({error: String(error)});
+  }
+}
+</script></head><body></body></html>

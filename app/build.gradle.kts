@@ -50,8 +50,8 @@ android {
         applicationId = "fun.kirari.hanako"
         minSdk = 24
         targetSdk = 35
-        versionCode = 23
-        versionName = "1.0.3"
+        versionCode = 24
+        versionName = "1.0.4"
         manifestPlaceholders["appLabel"] = "@string/app_name"
 
         buildConfigField("boolean", "SHOW_DEBUG_LOGS", showDebugLogs.toString())
@@ -179,6 +179,7 @@ dependencies {
     implementation(libs.jlatexmath)
     implementation(libs.jlatexmath.font.greek)
     implementation(libs.jlatexmath.font.cyrillic)
+    implementation("com.caverock:androidsvg-aar:1.4")
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
     implementation(libs.hiddenapibypass)

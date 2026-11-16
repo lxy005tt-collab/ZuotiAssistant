@@ -8,6 +8,20 @@ class UnifiedWindowLayoutTest {
     private val screen = CardBounds(8, 32, 352, 768)
 
     @Test
+    fun repeatedBottomEdgeGrowthAndKeyboardDismissal_neverRestoreAnObsoleteAnchor() {
+        var anchor = CardBounds(260, 700, 347, 745)
+        for (height in listOf(80, 315, 100, 400, 45, 315, 45)) {
+            val next = placeUnifiedWindow(screen, anchor, if (height == 45) 87 else 210, height)
+            assertTrue(next.top <= anchor.top)
+            assertTrue(next.left <= anchor.left)
+            anchor = next // same anchor adoption as the window controller
+        }
+        val aboveKeyboard = placeUnifiedWindow(CardBounds(8, 32, 352, 420), anchor, 210, 250)
+        val keyboardGone = placeUnifiedWindow(screen, aboveKeyboard, 210, 250)
+        assertEquals(aboveKeyboard, keyboardGone)
+    }
+
+    @Test
     fun opening_movesTheRightEdgeWhileKeepingTheLeftControlAnchored() {
         val anchor = CardBounds(24, 200, 111, 245)
         val expanded = placeUnifiedWindow(screen, anchor, 210, 160)

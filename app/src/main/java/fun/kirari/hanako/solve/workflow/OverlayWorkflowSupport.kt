@@ -2,6 +2,8 @@ package `fun`.kirari.hanako.solve.workflow
 
 import android.graphics.Bitmap
 import android.util.Base64
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import `fun`.kirari.hanako.core.network.search.SearchOutcome
 import `fun`.kirari.llm.core.ChatMessage
 import `fun`.kirari.llm.core.ChatToolCall
@@ -25,10 +27,10 @@ internal fun assistantPromptWithCopyMarker(systemPrompt: String): String {
     """.trimIndent()
 }
 
-internal fun Bitmap.toBase64Jpeg(quality: Int = 92): String {
+internal suspend fun Bitmap.toBase64Jpeg(quality: Int = 92): String = withContext(Dispatchers.Default) {
     val output = java.io.ByteArrayOutputStream()
     compress(Bitmap.CompressFormat.JPEG, quality, output)
-    return Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+    Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
 }
 
 internal fun buildEnhancedUserPrompt(

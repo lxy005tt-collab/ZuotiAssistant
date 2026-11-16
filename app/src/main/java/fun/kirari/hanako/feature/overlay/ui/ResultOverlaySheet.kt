@@ -10,6 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -24,7 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -38,6 +42,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -62,6 +68,7 @@ internal fun ResultOverlaySheet(
     uiState: OverlayUiState,
     onRegenerate: () -> Unit,
     onDraftChange: (String) -> Unit,
+    onComposerVisibleChange: (Boolean) -> Unit,
     onSendFollowUp: () -> Unit,
     onRetryFollowUp: () -> Unit,
     onContentHeightChanged: (Int) -> Unit
@@ -72,15 +79,15 @@ internal fun ResultOverlaySheet(
     var bodyHeight by remember { mutableStateOf(0) }
     var actionsHeight by remember { mutableStateOf(0) }
     var composerHeight by remember { mutableStateOf(0) }
-    var showComposer by remember(uiState.result?.id) { mutableStateOf(false) }
+    val showComposer = uiState.composerVisible
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val send = {
-        if (!uiState.working && uiState.followUpDraft.isNotBlank()) {
+        if (!uiState.working && uiState.result != null && uiState.followUpDraft.isNotBlank()) {
             focusManager.clearFocus()
             keyboard?.hide()
-            showComposer = false
+            onComposerVisibleChange(false)
             onSendFollowUp()
         }
     }
@@ -103,8 +110,8 @@ internal fun ResultOverlaySheet(
             onContentHeightChanged(bodyHeight + (if (actionsVisible) actionsHeight else 0) + (if (showComposer) composerHeight else 0))
         }
     }
-    LaunchedEffect(showComposer) {
-        if (showComposer) {
+    LaunchedEffect(showComposer, uiState.working) {
+        if (showComposer && !uiState.working && uiState.result != null) {
             withFrameNanos { }
             focusRequester.requestFocus()
             keyboard?.show()
@@ -142,26 +149,45 @@ internal fun ResultOverlaySheet(
                     }
                 }
                 uiState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (showComposer && uiState.result == null && !uiState.working) {
+                    Text("先截一道题，就可以在这里继续聊。", style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
         if (showComposer) {
             Box(Modifier.fillMaxWidth().onSizeChanged { composerHeight = it.height }
-                .padding(horizontal = 9.dp, vertical = 4.dp)) {
-                OutlinedTextField(
+                .padding(horizontal = 9.dp, vertical = 3.dp)) {
+                Surface(shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    color = MaterialTheme.colorScheme.surface) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(start = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                BasicTextField(
                     value = uiState.followUpDraft,
                     onValueChange = onDraftChange,
-                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
-                    placeholder = { Text("继续问…") },
-                    maxLines = 3,
-                    enabled = !uiState.working,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { send() }),
-                    trailingIcon = {
-                        IconButton(onClick = { send() }, enabled = !uiState.working && uiState.followUpDraft.isNotBlank()) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送追问", modifier = Modifier.size(18.dp))
+                    modifier = Modifier.weight(1f).padding(vertical = 7.dp).focusRequester(focusRequester),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
+                    decorationBox = { field ->
+                        Box {
+                            if (uiState.followUpDraft.isEmpty()) Text("继续问…", style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            field()
                         }
-                    }
+                    },
+                    maxLines = 3,
+                    enabled = !uiState.working && uiState.result != null,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { send() })
                 )
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 40.dp) {
+                    IconButton(onClick = { send() }, modifier = Modifier.size(40.dp),
+                        enabled = !uiState.working && uiState.result != null && uiState.followUpDraft.isNotBlank()) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送追问", modifier = Modifier.size(18.dp))
+                    }
+                }
+                }
+                }
             }
         }
         if (actionsVisible) {
@@ -191,7 +217,7 @@ internal fun ResultOverlaySheet(
                 }
                 IconButton(
                     onClick = {
-                        showComposer = false
+                        onComposerVisibleChange(false)
                         focusManager.clearFocus()
                         keyboard?.hide()
                         if (lastFollowUp != null && !uiState.retryCapturePending) onRetryFollowUp() else onRegenerate()
@@ -203,8 +229,8 @@ internal fun ResultOverlaySheet(
                 }
                 IconButton(
                     onClick = {
-                        showComposer = !showComposer
-                        if (!showComposer) { focusManager.clearFocus(); keyboard?.hide() }
+                        onComposerVisibleChange(!showComposer)
+                        if (showComposer) { focusManager.clearFocus(); keyboard?.hide() }
                     },
                     enabled = idle && !uiState.retryCapturePending && uiState.screenshotRetry == null &&
                         uiState.result != null && uiState.result.automationAction == null,

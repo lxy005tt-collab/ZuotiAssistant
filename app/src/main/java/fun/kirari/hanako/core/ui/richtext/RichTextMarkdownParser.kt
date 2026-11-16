@@ -66,39 +66,42 @@ private fun replaceCopyMarkers(content: String): Pair<String, List<CopyMarkerTok
 }
 
 internal fun preprocessMarkdown(content: String, extractCopyMarkers: Boolean = true): Pair<String, List<CopyMarkerToken>> {
-    val normalizedContent = content.normalizeMarkdownNewlines()
+    val normalizedContent = normalizeMathFences(content.normalizeMarkdownNewlines())
     val (copyPreprocessed, copyMarkers) = if (extractCopyMarkers) {
         replaceCopyMarkers(normalizedContent)
     } else {
         normalizedContent to emptyList()
     }
-    val codeBlocks = codeRangesIn(copyPreprocessed)
-
-    fun inCodeBlock(index: Int): Boolean = codeBlocks.any { index in it }
-
-    var result = escapedDollarBlockDelimiterRegex.replace(copyPreprocessed) { match ->
-        if (inCodeBlock(match.range.first)) match.value else "${match.groupValues[1]}${'$'}${'$'}"
-    }
-    result = inlineLatexRegex.replace(result) { match ->
-        if (inCodeBlock(match.range.first)) match.value else "${'$'}${match.groupValues[1]}${'$'}"
-    }
-    result = blockLatexRegex.replace(result) { match ->
-        if (inCodeBlock(match.range.first)) {
-            match.value
-        } else {
-            "\n${'$'}${'$'}\n${match.groupValues[1].trim()}\n${'$'}${'$'}\n"
+    // Each replacement changes offsets. Recompute protected ranges for that pass.
+    fun replaceOutsideCode(source: String, regex: Regex, replacement: (MatchResult) -> String): String {
+        val ranges = codeRangesIn(source)
+        return regex.replace(source) { match ->
+            if (ranges.any { match.range.first in it }) match.value else replacement(match)
         }
     }
-    result = dollarBlockLatexRegex.replace(result) { match ->
-        if (inCodeBlock(match.range.first)) {
-            match.value
-        } else {
-            val prefix = if (match.groupValues[1].contains('\n')) "\n" else match.groupValues[1]
-            "${prefix}${'$'}${'$'}\n${match.groupValues[2].trim()}\n${'$'}${'$'}"
-        }
+
+    var result = replaceOutsideCode(copyPreprocessed, escapedDollarBlockDelimiterRegex) { match ->
+        "${match.groupValues[1]}${'$'}${'$'}"
+    }
+    result = replaceOutsideCode(result, inlineLatexRegex) { match -> "${'$'}${match.groupValues[1]}${'$'}" }
+    result = replaceOutsideCode(result, blockLatexRegex) { match ->
+        "\n${'$'}${'$'}\n${match.groupValues[1].trim()}\n${'$'}${'$'}\n"
+    }
+    result = replaceOutsideCode(result, dollarBlockLatexRegex) { match ->
+        val prefix = if (match.groupValues[1].contains('\n')) "\n" else match.groupValues[1]
+        "${prefix}${'$'}${'$'}\n${match.groupValues[2].trim()}\n${'$'}${'$'}"
+    }
+    val protected = codeRangesIn(result) + Regex("""\$\$[\s\S]*?\$\$|(?<!\\)\$[^\n]*?(?<!\\)\$""").findAll(result).map { it.range }.toList()
+    result = bareMathEnvironment.replace(result) { match ->
+        if (protected.any { match.range.first in it }) match.value else "\n$$\n${match.value}\n$$\n"
     }
     return result to copyMarkers
 }
+
+private val bareMathEnvironment = Regex("""\\begin\{(equation\*?|align\*?|aligned|alignedat|gather\*?|gathered|multline\*?|eqnarray\*?|cases|dcases|matrix|[pbBvV]matrix)\}[\s\S]*?\\end\{\1\}""")
+
+private fun normalizeMathFences(source: String): String = Regex("(?m)^ {0,3}```(?:math|latex|tex)[ \\t]*\\n([\\s\\S]*?)\\n {0,3}```[ \\t]*$")
+    .replace(source) { match -> "$$\n${match.groupValues[1].trim()}\n$$" }
 
 internal data class CopyMarkerToken(
     val placeholder: String,
@@ -175,34 +178,29 @@ internal fun parseMarkdown(content: String, extractCopyMarkers: Boolean = true):
 
 internal fun splitDisplayMathBlocks(content: String): List<MarkdownRenderBlock> {
     val blocks = mutableListOf<MarkdownRenderBlock>()
+    val codeRanges = codeRangesIn(content)
     var cursor = 0
+    fun nextDelimiter(from: Int): Int {
+        var candidate = content.indexOf("$$", from)
+        while (candidate >= 0) {
+            var slash = candidate - 1
+            while (slash >= 0 && content[slash] == '\\') slash--
+            if ((candidate - slash - 1) % 2 == 0 && codeRanges.none { candidate in it }) return candidate
+            candidate = content.indexOf("$$", candidate + 2)
+        }
+        return -1
+    }
     while (cursor < content.length) {
-        val start = content.indexOf("$$", startIndex = cursor)
-        if (start < 0) {
-            content.substring(cursor).takeIf { it.isNotEmpty() }?.let { blocks += MarkdownRenderBlock.Markdown(it) }
-            break
-        }
-        if (!content.isStandaloneMathDelimiter(start)) {
-            cursor = start + 2
-            continue
-        }
-        val end = content.indexOf("$$", startIndex = start + 2).takeIf { it >= 0 && content.isStandaloneMathDelimiter(it) }
-        if (end == null) {
-            content.substring(cursor).takeIf { it.isNotEmpty() }?.let { blocks += MarkdownRenderBlock.Markdown(it) }
-            break
-        }
+        val start = nextDelimiter(cursor)
+        if (start < 0) break
+        val end = nextDelimiter(start + 2)
+        if (end < 0) break
         content.substring(cursor, start).takeIf { it.isNotEmpty() }?.let { blocks += MarkdownRenderBlock.Markdown(it) }
         blocks += MarkdownRenderBlock.DisplayMath(content.substring(start, end + 2))
         cursor = end + 2
     }
+    content.substring(cursor).takeIf { it.isNotEmpty() }?.let { blocks += MarkdownRenderBlock.Markdown(it) }
     return blocks.ifEmpty { listOf(MarkdownRenderBlock.Markdown(content)) }
-}
-
-private fun String.isStandaloneMathDelimiter(index: Int): Boolean {
-    val before = lastIndexOf('\n', startIndex = index - 1).let { if (it < 0) 0 else it + 1 }
-    val after = index + 2
-    val lineEnd = indexOf('\n', startIndex = after).let { if (it < 0) length else it }
-    return substring(before, index).isBlank() && substring(after, lineEnd).isBlank()
 }
 
 internal fun extractCodeFenceContent(node: ASTNode, content: String): String {

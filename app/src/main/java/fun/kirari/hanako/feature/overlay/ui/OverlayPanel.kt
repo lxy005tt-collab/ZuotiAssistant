@@ -71,6 +71,7 @@ internal fun OverlayPanel(
                     uiState = uiState,
                     onRegenerate = viewModel::regenerateCurrentResult,
                     onDraftChange = viewModel::updateFollowUpDraft,
+                    onComposerVisibleChange = viewModel::setComposerVisible,
                     onSendFollowUp = viewModel::sendFollowUp,
                     onRetryFollowUp = viewModel::retryFollowUp,
                     onContentHeightChanged = onContentHeightChanged
